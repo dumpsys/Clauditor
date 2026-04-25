@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================
-# start.sh — Start the PR Review Bot with Tailscale Funnel
+# start.sh — Start Clauditor with Tailscale Funnel
 # =============================================================
 set -euo pipefail
 
@@ -8,7 +8,7 @@ PORT="${PORT:-3000}"
 BOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  PR Review Bot — Startup"
+echo "  Clauditor — Startup"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 # ── 1. Validate environment ────────────────────────────────

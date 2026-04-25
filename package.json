@@ -1,7 +1,7 @@
 {
-  "name": "pr-review-bot",
+  "name": "clauditor",
   "version": "1.0.0",
-  "description": "GitHub webhook server that uses Claude Code to address PR review feedback automatically",
+  "description": "An autonomous PR auditor powered by Claude Code. Listens to GitHub webhooks, applies review feedback, and reviews PRs on request.",
   "type": "module",
   "main": "src/server.js",
   "scripts": {

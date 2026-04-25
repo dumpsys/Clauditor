@@ -1,6 +1,13 @@
-# PR Review Bot 🤖
+# Clauditor 🔎
 
-A local webhook server that monitors GitHub pull request review comments and uses **Claude Code** to automatically evaluate, fix, and respond to review feedback.
+> *Claude + auditor.* An autonomous PR auditor powered by [Claude Code](https://www.anthropic.com/claude-code).
+
+A local webhook server that watches GitHub pull requests and uses Claude Code to:
+
+1. **Address review feedback** — when a reviewer leaves a comment, Clauditor evaluates it, applies the fix, commits, and replies.
+2. **Auto-review on request** — when a configured user is requested as a reviewer, Clauditor runs `claude -p /review` and posts a formal PR review.
+
+All HMAC-verified, queue-serialized, and confined to non-protected branches.
 
 ## How It Works
 
@@ -63,7 +70,7 @@ Both workflows go through the same Express server, HMAC-verified webhook, and a 
 
 ```bash
 git clone <this-repo>
-cd pr-review-bot
+cd clauditor
 cp .env.example .env
 ```
 
@@ -183,7 +190,7 @@ Reason: The comment is an approval, not a request for changes.
 ## File Structure
 
 ```
-pr-review-bot/
+clauditor/
 ├── src/
 │   ├── server.js              # Entry point — starts HTTP server
 │   ├── app.js                 # Express app (middleware + routes)
@@ -218,7 +225,7 @@ To keep the bot running after you close your terminal:
 ```bash
 # Using PM2
 npm install -g pm2
-pm2 start src/server.js --name pr-review-bot
+pm2 start src/server.js --name clauditor
 pm2 save
 pm2 startup
 ```

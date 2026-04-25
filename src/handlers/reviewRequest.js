@@ -34,7 +34,7 @@ export async function handleReviewRequest(job) {
     `(${context.baseBranch} ← ${context.headBranch}), requested by @${context.requester}`
   );
 
-  const workDir = fs.mkdtempSync(path.join(os.tmpdir(), `pr-bot-review-${context.prNumber}-`));
+  const workDir = fs.mkdtempSync(path.join(os.tmpdir(), `clauditor-review-${context.prNumber}-`));
 
   try {
     logger.info(`Cloning ${context.repoFullName} into ${workDir} (full clone for diff)`);

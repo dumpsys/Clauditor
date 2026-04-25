@@ -7,6 +7,6 @@ validateConfig();
 const app = createApp();
 
 app.listen(config.port, () => {
-  logger.info(`PR Review Bot listening on port ${config.port}`);
+  logger.info(`Clauditor listening on port ${config.port}`);
   logger.info(`Queue worker running...`);
 });

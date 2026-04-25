@@ -69,7 +69,7 @@ export async function handleComment(job) {
     `Handling ${context.event} on PR #${context.prNumber}: "${context.commentBody.substring(0, 80)}..."`
   );
 
-  const workDir = fs.mkdtempSync(path.join(os.tmpdir(), `pr-bot-${context.prNumber}-`));
+  const workDir = fs.mkdtempSync(path.join(os.tmpdir(), `clauditor-${context.prNumber}-`));
 
   try {
     logger.info(`Cloning ${context.repoFullName} into ${workDir}`);
