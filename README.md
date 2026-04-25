@@ -98,7 +98,17 @@ Go to your repo → **Settings → Webhooks → Add webhook**:
 | Payload URL | `https://your-machine.ts.net/webhook` |
 | Content type | `application/json` |
 | Secret | Same as `GITHUB_WEBHOOK_SECRET` in `.env` |
-| Events | ✅ Pull request review comments, ✅ Pull request reviews |
+| Events | ✅ Pull request review comments, ✅ Pull request reviews, ✅ Issue comments |
+
+### Supported event types
+
+| GitHub event | What it covers |
+|---|---|
+| `pull_request_review_comment` | Inline comment on a specific line of code in a review |
+| `pull_request_review` | Review summary (Approve / Request changes / Comment) |
+| `issue_comment` | Plain comment on the PR conversation tab (PR-attached only) |
+
+`issue_comment` also fires for plain issues — the bot ignores those. For PR-attached issue comments the head ref isn't in the payload, so the bot fetches the PR via the GitHub API to learn the branch.
 
 ---
 

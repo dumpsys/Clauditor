@@ -21,8 +21,9 @@ class JobQueue {
     while (this._queue.length > 0) {
       const job = this._queue.shift();
       try {
-        logger.info(`Processing job: PR #${job.payload.pull_request?.number}`);
-        await handlePullRequestReviewComment(job.payload);
+        const prNumber = job.payload.pull_request?.number ?? job.payload.issue?.number;
+        logger.info(`Processing job: PR #${prNumber} (${job.event})`);
+        await handlePullRequestReviewComment(job);
       } catch (err) {
         logger.error(`Job failed: ${err.message}`, { stack: err.stack });
       }

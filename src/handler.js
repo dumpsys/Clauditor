@@ -2,19 +2,37 @@ import path from "path";
 import fs from "fs";
 import os from "os";
 import { runClaudeCode } from "./services/claude.js";
-import { replyToComment, replyToReview } from "./services/github.js";
+import { replyToComment, replyToReview, getPullRequest } from "./services/github.js";
 import { gitOperations } from "./services/git.js";
+import { config } from "./config.js";
 import { logger } from "./logger.js";
 
 /**
- * Main handler for PR review comment events.
+ * Build a normalized job context regardless of which webhook event triggered it.
+ *
+ * Differences across events:
+ * - pull_request_review_comment: payload.pull_request + payload.comment (with path/diff_hunk)
+ * - pull_request_review:         payload.pull_request + payload.review
+ * - issue_comment:               payload.issue (no head/base/sha) + payload.comment
+ *                                → must fetch the PR via the API to learn the branch
  */
-export async function handlePullRequestReviewComment(payload) {
-  const pr = payload.pull_request;
-  const comment = payload.comment || payload.review;
+async function buildContext(job) {
+  const { event, payload } = job;
   const repo = payload.repository;
 
-  const context = {
+  let pr;
+  let comment;
+
+  if (event === "issue_comment") {
+    pr = await getPullRequest(repo.owner.login, repo.name, payload.issue.number);
+    comment = payload.comment;
+  } else {
+    pr = payload.pull_request;
+    comment = payload.comment || payload.review;
+  }
+
+  return {
+    event,
     owner: repo.owner.login,
     repoName: repo.name,
     repoFullName: repo.full_name,
@@ -31,8 +49,25 @@ export async function handlePullRequestReviewComment(payload) {
     commitSha: pr.head.sha,
     commenter: comment.user.login,
   };
+}
 
-  logger.info(`Handling review comment on PR #${context.prNumber}: "${context.commentBody.substring(0, 80)}..."`);
+/**
+ * Main handler for PR review / issue comment events.
+ */
+export async function handlePullRequestReviewComment(job) {
+  const context = await buildContext(job);
+
+  // Protected-branch check: webhook layer already covers events whose payload
+  // includes head.ref directly. For issue_comment we only learn the branch
+  // after fetching the PR, so guard here too.
+  if (config.protectedBranches.includes(context.branch)) {
+    logger.warn(`Refusing to operate on protected branch: ${context.branch}`);
+    return;
+  }
+
+  logger.info(
+    `Handling ${context.event} on PR #${context.prNumber}: "${context.commentBody.substring(0, 80)}..."`
+  );
 
   const workDir = fs.mkdtempSync(path.join(os.tmpdir(), `pr-bot-${context.prNumber}-`));
 
@@ -64,7 +99,9 @@ export async function handlePullRequestReviewComment(payload) {
 }
 
 async function postReply(context, body) {
-  if (context.filePath) {
+  // Inline review comments can be replied to inline (threaded). Everything else
+  // (review summaries, issue comments) becomes a top-level PR comment.
+  if (context.event === "pull_request_review_comment" && context.filePath) {
     await replyToComment(context.owner, context.repoName, context.prNumber, context.commentId, body);
   } else {
     await replyToReview(context.owner, context.repoName, context.prNumber, body);

@@ -26,6 +26,15 @@ async function ghFetch(url, options = {}) {
 }
 
 /**
+ * Fetch a pull request — needed for `issue_comment` events because that
+ * payload only contains the issue, not the PR head ref/sha.
+ */
+export async function getPullRequest(owner, repo, prNumber) {
+  const url = `${GITHUB_API}/repos/${owner}/${repo}/pulls/${prNumber}`;
+  return ghFetch(url);
+}
+
+/**
  * Reply to a specific pull request review comment (inline code comment).
  */
 export async function replyToComment(owner, repo, prNumber, commentId, body) {
