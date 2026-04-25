@@ -10,6 +10,7 @@ const HANDLED_EVENTS = new Set([
   "pull_request_review_comment", // inline review comment on a specific line
   "pull_request_review",         // review summary (Approve / Request changes / Comment)
   "issue_comment",               // plain comment on the PR conversation tab
+  "pull_request",                // only the `review_requested` action is processed below
 ]);
 
 router.post("/webhook", verifySignature, (req, res) => {
@@ -20,6 +21,35 @@ router.post("/webhook", verifySignature, (req, res) => {
     return res.status(200).json({ message: `Event '${event}' ignored` });
   }
 
+  // ── pull_request: only review_requested + only when our configured user ────
+  if (event === "pull_request") {
+    if (payload.action !== "review_requested") {
+      return res.status(200).json({ message: `pull_request action '${payload.action}' ignored` });
+    }
+    if (!config.reviewRequestUser) {
+      return res.status(200).json({ message: "GITHUB_REVIEW_REQUEST_USER not configured" });
+    }
+    // GitHub fires this same event for personal AND team review requests.
+    // We only react to direct personal requests for the configured user.
+    const requestedUser = payload.requested_reviewer?.login;
+    if (requestedUser !== config.reviewRequestUser) {
+      return res.status(200).json({
+        message: `Review requested for '${requestedUser ?? "team"}', not '${config.reviewRequestUser}'`,
+      });
+    }
+    const branch = payload.pull_request?.head?.ref;
+    if (config.protectedBranches.includes(branch)) {
+      // Reviewing a protected branch is fine, but we'll keep the existing
+      // policy: skip anything that touches protected branches.
+      logger.warn(`Refusing to operate on protected branch: ${branch}`);
+      return res.status(200).json({ message: `Protected branch '${branch}' skipped` });
+    }
+    queue.add({ event, payload, receivedAt: new Date().toISOString() });
+    logger.info(`Review-request job enqueued for PR #${payload.pull_request?.number}`);
+    return res.status(202).json({ message: "Accepted", queued: true });
+  }
+
+  // ── comment-style events ───────────────────────────────────────────────────
   if (payload.action !== "created") {
     return res.status(200).json({ message: `Action '${payload.action}' ignored` });
   }

@@ -25,6 +25,42 @@ export async function runClaudeCode(workDir, context) {
   return parseClaudeOutput(output);
 }
 
+/**
+ * Run the built-in `/review` slash command in headless mode and return
+ * Claude's review text (suitable for posting as a PR review body).
+ *
+ * Per https://www.linkedin.com/posts/markshust_til-you-can-run-claude-code-slash-commands-share-7407042756113489939-5pfS/
+ * `claude -p "/review"` triggers the built-in review slash command in headless mode.
+ */
+export async function runClaudeReview(workDir, context) {
+  // Slash command goes via the prompt argument (not stdin) — that's how
+  // the CLI parses it as a command rather than free-form text.
+  const args = [
+    "-p", "/review",
+    "--output-format", "json",
+    "--allowedTools", "Read,Glob,Grep,Bash",
+    "--max-turns", "50",
+  ];
+
+  logger.info(
+    `Running: claude -p /review (PR #${context.prNumber}, ${context.baseBranch}...${context.headBranch})`
+  );
+
+  const output = await spawnClaude(args, /* stdinPrompt */ null, workDir);
+  return extractReviewText(output);
+}
+
+function extractReviewText(rawOutput) {
+  // --output-format json wraps as { type: "result", result: "<text>", ... }
+  try {
+    const outer = JSON.parse(rawOutput);
+    if (typeof outer.result === "string") return outer.result;
+  } catch {
+    // Not JSON — fall through and return raw.
+  }
+  return rawOutput;
+}
+
 function buildPrompt(context) {
   const fileContext = context.filePath
     ? `**File being reviewed:** \`${context.filePath}\``
@@ -93,7 +129,9 @@ function spawnClaude(args, prompt, cwd) {
       stdio: ["pipe", "pipe", "pipe"],
     });
 
-    proc.stdin.write(prompt);
+    if (prompt) {
+      proc.stdin.write(prompt);
+    }
     proc.stdin.end();
 
     proc.stdout.on("data", (chunk) => chunks.push(chunk));

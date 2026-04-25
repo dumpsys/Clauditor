@@ -12,6 +12,9 @@ export const config = {
   githubToken: process.env.GITHUB_TOKEN || process.env.GH_TOKEN,
   webhookSecret: process.env.GITHUB_WEBHOOK_SECRET,
   botUsername: process.env.GITHUB_BOT_USERNAME,
+  // Username (e.g. "dumpsys") that, when requested as a reviewer, triggers
+  // an automated /review run. Empty/unset disables the feature.
+  reviewRequestUser: process.env.GITHUB_REVIEW_REQUEST_USER || "",
   protectedBranches: (process.env.PROTECTED_BRANCHES || "main,master,develop")
     .split(",")
     .map((b) => b.trim())

@@ -4,34 +4,45 @@ A local webhook server that monitors GitHub pull request review comments and use
 
 ## How It Works
 
+The bot handles two distinct workflows, dispatched by GitHub event type:
+
+### A. Review-comment workflow (existing)
+
 ```
-GitHub PR Review Comment
+PR review/issue comment
         │
         ▼
-Tailscale Funnel (HTTPS → localhost)
+Webhook → Queue → handlers/comment.js
         │
         ▼
-Webhook Server (Express)
-  ├── Verifies HMAC-SHA256 signature
-  ├── Filters events (only PR review comments, non-bot, non-protected-branch)
-  └── Enqueues job
+Clone PR branch (shallow)
         │
         ▼
-Job Queue (serialized to avoid conflicts)
+claude -p (custom prompt) → { actionable, summary, reason }
         │
-        ▼
-Claude Code (headless: claude -p)
-  ├── Reads relevant files
-  ├── Evaluates: is this feedback valid and actionable?
-  ├── YES → applies minimal targeted fix
-  └── NO  → explains why no change was made
-        │
-        ▼
-Git: commit + push changes to PR branch
-        │
-        ▼
-GitHub API: reply to review comment with result
+        ├── actionable → Edit files → commit + push → reply ✅
+        └── not actionable → reply 🤖 with explanation
 ```
+
+### B. Review-request workflow (new)
+
+```
+PR review_requested for $GITHUB_REVIEW_REQUEST_USER
+        │
+        ▼
+Webhook → Queue → handlers/reviewRequest.js
+        │
+        ▼
+Full clone (head + base for diffing)
+        │
+        ▼
+claude -p /review  (built-in slash command, headless)
+        │
+        ▼
+GitHub API: POST /pulls/{n}/reviews   (event: COMMENT)
+```
+
+Both workflows go through the same Express server, HMAC-verified webhook, and a single in-memory job queue.
 
 ---
 
@@ -98,17 +109,20 @@ Go to your repo → **Settings → Webhooks → Add webhook**:
 | Payload URL | `https://your-machine.ts.net/webhook` |
 | Content type | `application/json` |
 | Secret | Same as `GITHUB_WEBHOOK_SECRET` in `.env` |
-| Events | ✅ Pull request review comments, ✅ Pull request reviews, ✅ Issue comments |
+| Events | ✅ Pull request review comments, ✅ Pull request reviews, ✅ Issue comments, ✅ Pull requests |
 
 ### Supported event types
 
-| GitHub event | What it covers |
-|---|---|
-| `pull_request_review_comment` | Inline comment on a specific line of code in a review |
-| `pull_request_review` | Review summary (Approve / Request changes / Comment) |
-| `issue_comment` | Plain comment on the PR conversation tab (PR-attached only) |
+| GitHub event | What it covers | Action |
+|---|---|---|
+| `pull_request_review_comment` | Inline comment on a specific line of code in a review | Apply targeted fix |
+| `pull_request_review` | Review summary (Approve / Request changes / Comment) | Apply targeted fix |
+| `issue_comment` | Plain comment on the PR conversation tab (PR-attached only) | Apply targeted fix |
+| `pull_request` (`review_requested`) | Configured user requested as PR reviewer | Run `claude -p /review` and post a formal review |
 
-`issue_comment` also fires for plain issues — the bot ignores those. For PR-attached issue comments the head ref isn't in the payload, so the bot fetches the PR via the GitHub API to learn the branch.
+Notes:
+- `issue_comment` also fires for plain issues — the bot ignores those. For PR-attached issue comments the head ref isn't in the payload, so the bot fetches the PR via the GitHub API to learn the branch.
+- `pull_request` covers many actions; only `review_requested` is processed, and only when the requested reviewer matches `GITHUB_REVIEW_REQUEST_USER`. Team review requests are ignored. Leave the env var unset to disable the feature.
 
 ---
 
@@ -132,6 +146,7 @@ Go to your repo → **Settings → Webhooks → Add webhook**:
 | `GITHUB_TOKEN` | ✅ | — | GitHub PAT with repo access |
 | `GITHUB_WEBHOOK_SECRET` | ✅ | — | Webhook HMAC secret |
 | `GITHUB_BOT_USERNAME` | ✅ | — | Your GitHub username (for loop prevention) |
+| `GITHUB_REVIEW_REQUEST_USER` | | _empty_ | When this user is requested as a PR reviewer, the bot runs `/review` and posts a formal review. Empty disables the feature. |
 | `PORT` | | `3000` | Local server port |
 | `PROTECTED_BRANCHES` | | `main,master,develop` | Branches bot won't push to |
 | `GIT_EMAIL` | | `pr-bot@localhost` | Git commit email |
@@ -182,8 +197,10 @@ pr-review-bot/
 │   │   ├── claude.js          # Claude Code CLI invocation
 │   │   ├── git.js             # Clone, commit, push operations
 │   │   └── github.js          # GitHub REST API client
+│   ├── handlers/
+│   │   ├── comment.js         # Review/issue-comment orchestration
+│   │   └── reviewRequest.js   # `/review` orchestration on review-request
 │   ├── queue.js               # In-memory job queue (serialized)
-│   ├── handler.js             # PR review orchestration logic
 │   └── logger.js              # Simple structured logger
 ├── scripts/
 │   └── test-webhook.js        # Local webhook simulator

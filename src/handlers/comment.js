@@ -1,11 +1,11 @@
 import path from "path";
 import fs from "fs";
 import os from "os";
-import { runClaudeCode } from "./services/claude.js";
-import { replyToComment, replyToReview, getPullRequest } from "./services/github.js";
-import { gitOperations } from "./services/git.js";
-import { config } from "./config.js";
-import { logger } from "./logger.js";
+import { runClaudeCode } from "../services/claude.js";
+import { replyToComment, replyToReview, getPullRequest } from "../services/github.js";
+import { gitOperations } from "../services/git.js";
+import { config } from "../config.js";
+import { logger } from "../logger.js";
 
 /**
  * Build a normalized job context regardless of which webhook event triggered it.
@@ -54,7 +54,7 @@ async function buildContext(job) {
 /**
  * Main handler for PR review / issue comment events.
  */
-export async function handlePullRequestReviewComment(job) {
+export async function handleComment(job) {
   const context = await buildContext(job);
 
   // Protected-branch check: webhook layer already covers events whose payload

@@ -44,6 +44,19 @@ export async function replyToComment(owner, repo, prNumber, commentId, body) {
 }
 
 /**
+ * Submit a formal PR review (Approve / Request changes / plain Comment).
+ * Defaults to `event: "COMMENT"` — leaves a review post without a verdict.
+ */
+export async function postReview(owner, repo, prNumber, body, event = "COMMENT") {
+  const url = `${GITHUB_API}/repos/${owner}/${repo}/pulls/${prNumber}/reviews`;
+  logger.info(`Posting formal review (event=${event}) on PR #${prNumber}`);
+  return ghFetch(url, {
+    method: "POST",
+    body: JSON.stringify({ body, event }),
+  });
+}
+
+/**
  * Post a general comment on a PR (used for non-inline review comments).
  */
 export async function replyToReview(owner, repo, prNumber, body) {
