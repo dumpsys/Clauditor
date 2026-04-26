@@ -1,0 +1,23 @@
+# Clauditor — Diagrams
+
+These are [Excalidraw](https://excalidraw.com) source files. Open them at
+<https://excalidraw.com> (drag & drop the `.excalidraw` file onto the canvas)
+or install the Excalidraw extension for VS Code.
+
+| File | What it shows |
+|---|---|
+| [`clauditor-architecture.excalidraw`](./clauditor-architecture.excalidraw) | High-level architecture: GitHub → Tailscale → Express → Queue → Handlers → Services → External |
+| [`clauditor-comment-flow.excalidraw`](./clauditor-comment-flow.excalidraw) | Workflow A — handling PR review comments, review summaries, and PR-attached issue comments. Includes the actionable / not-actionable branch. |
+| [`clauditor-review-request-flow.excalidraw`](./clauditor-review-request-flow.excalidraw) | Workflow B — auto-review when the configured user is requested as a reviewer, using `claude -p /review` and posting a formal PR review. |
+
+The diagrams use a consistent color palette:
+
+| Color | Layer |
+|---|---|
+| Light blue | External system (GitHub, CLIs) |
+| Light yellow | Network layer (Tailscale Funnel) |
+| Light orange | App / routing / queue |
+| Light pink | Middleware (HMAC verification) |
+| Light green | Handlers (and success outcomes) |
+| Light purple | Services (claude / git / github) |
+| Yellow diamond | Decision point |

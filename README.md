@@ -9,6 +9,8 @@ A local webhook server that watches GitHub pull requests and uses Claude Code to
 
 All HMAC-verified, queue-serialized, and confined to non-protected branches.
 
+> 📐 **Visual diagrams** — see [`docs/`](./docs) for Excalidraw diagrams of the architecture and both workflows.
+
 ## How It Works
 
 The bot handles two distinct workflows, dispatched by GitHub event type:
