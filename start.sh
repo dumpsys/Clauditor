@@ -17,9 +17,9 @@ if [ ! -f "$BOT_DIR/.env" ]; then
   exit 1
 fi
 
-# `set -a` auto-exports every variable assigned while sourcing, so the
-# values reach child processes (node, tailscale). Without this, `source`
-# would only define them in the current shell.
+# Load .env into the script's own environment so its sanity-check loop and
+# the tailscale step can read values from it. Node loads .env separately via
+# `dotenv/config`, so children get their own copy regardless.
 set -a
 # shellcheck disable=SC1091
 source "$BOT_DIR/.env"

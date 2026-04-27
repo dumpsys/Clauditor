@@ -7,22 +7,15 @@
  */
 
 import crypto from "crypto";
-import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import path from "path";
+import dotenv from "dotenv";
 
 // Load .env from the repo root
 const envPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", ".env");
-try {
-  const envContents = readFileSync(envPath, "utf-8");
-  envContents.split("\n").forEach((line) => {
-    const [key, ...rest] = line.split("=");
-    if (key && !key.startsWith("#") && rest.length) {
-      process.env[key.trim()] = rest.join("=").trim();
-    }
-  });
-} catch {
-  console.warn(".env not found, using environment variables");
+const dotenvResult = dotenv.config({ path: envPath });
+if (dotenvResult.error) {
+  console.warn(`.env not loaded (${dotenvResult.error.code}); using process environment instead`);
 }
 
 const PORT = process.env.PORT || 3000;
