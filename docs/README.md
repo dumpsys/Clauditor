@@ -7,7 +7,7 @@ or install the Excalidraw extension for VS Code.
 | File | What it shows |
 |---|---|
 | [`clauditor-architecture.excalidraw`](./clauditor-architecture.excalidraw) | High-level architecture: GitHub → Tailscale → Express → Queue → Handlers → Services → External |
-| [`clauditor-comment-flow.excalidraw`](./clauditor-comment-flow.excalidraw) | Workflow A — handling PR review comments, review summaries, and PR-attached issue comments. Includes the actionable / not-actionable branch. |
+| [`clauditor-comment-flow.excalidraw`](./clauditor-comment-flow.excalidraw) | Workflow A — handling PR review comments, review summaries, and PR-attached issue comments. Shows both decision points: the **PR-author guard** (`pr.user.login === GITHUB_BOT_USERNAME`?) and the **actionable** check. Both `no` branches end in a silent skip — only the success path posts a reply. |
 | [`clauditor-review-request-flow.excalidraw`](./clauditor-review-request-flow.excalidraw) | Workflow B — auto-review when the configured user is requested as a reviewer, using `claude -p /review` and posting a formal PR review. |
 
 The diagrams use a consistent color palette:
@@ -20,4 +20,5 @@ The diagrams use a consistent color palette:
 | Light pink | Middleware (HMAC verification) |
 | Light green | Handlers (and success outcomes) |
 | Light purple | Services (claude / git / github) |
+| Light gray | Silent skip outcome (handler returns without posting on the PR) |
 | Yellow diamond | Decision point |

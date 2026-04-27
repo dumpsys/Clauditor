@@ -15,25 +15,30 @@ All HMAC-verified, queue-serialized, and confined to non-protected branches.
 
 The bot handles two distinct workflows, dispatched by GitHub event type:
 
-### A. Review-comment workflow (existing)
+### A. Review-comment workflow
 
 ```
-PR review/issue comment
+PR review / inline comment / PR-attached issue comment
         │
         ▼
 Webhook → Queue → handlers/comment.js
         │
         ▼
-Clone PR branch (shallow)
+Guard: PR author == GITHUB_BOT_USERNAME ?
         │
-        ▼
-claude -p (custom prompt) → { actionable, summary, reason }
+        ├── no  → log + return (no clone, no Claude run, no reply)
         │
-        ├── actionable → Edit files → commit + push → reply ✅
-        └── not actionable → reply 🤖 with explanation
+        └── yes ↓
+                Clone PR branch (shallow)
+                        │
+                        ▼
+                claude -p (custom prompt) → { actionable, summary, reason }
+                        │
+                        ├── actionable     → Edit files → commit + push → reply ✅
+                        └── not actionable → log + return (silent on the PR)
 ```
 
-### B. Review-request workflow (new)
+### B. Review-request workflow
 
 ```
 PR review_requested for $GITHUB_REVIEW_REQUEST_USER
@@ -76,13 +81,23 @@ cd clauditor
 cp .env.example .env
 ```
 
-Edit `.env`:
+Edit `.env` (see `.env.example` for the full list):
 
 ```env
+# Required
 GITHUB_TOKEN=ghp_your_token_here
 GITHUB_WEBHOOK_SECRET=your_random_secret_string
-GITHUB_BOT_USERNAME=your-github-username
+GITHUB_BOT_USERNAME=your-github-username       # also acts as the PR-author allow-list
+
+# Optional — enables Workflow B (auto-review when this user is requested)
+GITHUB_REVIEW_REQUEST_USER=your-github-username
+
+# Optional — only needed if `tailscale` is not on PATH inside scripts
+# (common on macOS when only Tailscale.app is installed)
+# TAILSCALE_BIN=/Applications/Tailscale.app/Contents/MacOS/Tailscale
 ```
+
+The server loads `.env` automatically via [`dotenv`](https://www.npmjs.com/package/dotenv), so `npm start` works as well as `./start.sh`.
 
 ### 2. GitHub Token Permissions
 
@@ -148,12 +163,17 @@ Together these mean the bot is silent on the PR unless it has actually made a co
 
 | Concern | How It's Handled |
 |---------|-----------------|
-| Fake webhooks | HMAC-SHA256 signature verification on every request |
+| Fake webhooks | HMAC-SHA256 signature verification on every request (timing-safe) |
 | Bot reply loops | Ignores comments from `GITHUB_BOT_USERNAME` |
 | Accidental pushes to main | `PROTECTED_BRANCHES` list blocks any push |
-| Runaway Claude | `--max-turns 10` + `CLAUDE_TIMEOUT_MS` limit |
-| Concurrent jobs | Single-file queue serializes all jobs |
+| Pushes to PRs you don't own | Comment handler only acts on PRs **authored by `GITHUB_BOT_USERNAME`**; comments on someone else's PR are skipped before any clone or Claude run |
+| Noise on PR threads | Bot stays silent when feedback is non-actionable — no "🤖 nothing to do" replies |
+| Runaway Claude (comment) | `--max-turns 10` + `CLAUDE_TIMEOUT_MS` limit |
+| Runaway Claude (review) | `--max-turns 50` + `CLAUDE_REVIEW_TIMEOUT_MS` limit (separate, larger) |
+| Concurrent jobs | In-memory FIFO queue serializes all jobs (single worker) |
 | Claude changes nothing | Detects empty `git status`, throws error instead of empty commit |
+| Token leakage | Auth flows through `git -c http.extraHeader=…` instead of being baked into the remote URL |
+| Auth misconfig surfaces clearly | 401 / API-key errors are decoded from Claude's JSON envelope into the rejection message |
 
 ---
 
