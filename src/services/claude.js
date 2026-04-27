@@ -18,7 +18,10 @@ export async function runClaudeCode(workDir, context) {
     "-p",
     "--output-format", "json",
     "--allowedTools", "Read,Edit,Write,Bash,Glob,Grep",
-    "--max-turns", "10",
+    // Higher than the original 10 — the test-verify-and-fix loop
+    // (edit → run tests → fix failures → re-run) can take several turns
+    // beyond the initial change.
+    "--max-turns", "25",
   ];
 
   const output = await spawnClaude(args, prompt, workDir, config.claudeTimeoutMs);
@@ -76,7 +79,8 @@ You are an automated code review assistant. A developer has left a review commen
 Your job is to:
 1. Carefully evaluate if the feedback is valid, specific, and actionable
 2. If actionable: apply the necessary code changes to address the feedback
-3. Output a structured JSON decision (see format below)
+3. **Verify the changes don't break the test suite** before declaring success
+4. Output a structured JSON decision (see format below)
 
 **PR Title:** ${context.prTitle}
 **Branch:** ${context.branch}
@@ -88,34 +92,65 @@ ${context.commentBody}
 
 ${diffContext}
 
-**Instructions:**
+**Step 1 — Decide if the feedback is actionable**
 - Read the relevant file(s) using the Read tool
-- Evaluate the feedback critically: Is it a genuine improvement? Is it clear enough to act on?
-- If YES: make the minimal, targeted code change to address the feedback. Do NOT refactor unrelated code.
-- If the feedback is vague, subjective, already implemented, or wrong: do NOT change anything.
-- After your work, output ONLY a JSON object as the last thing you write, in this exact format:
+- Evaluate critically: Is it a genuine improvement? Is it clear enough to act on?
+- If the feedback is vague, subjective, already implemented, or wrong: do NOT change anything and emit \`actionable: false\` (skip step 2 and 3).
+
+**Step 2 — Make the change**
+- Make the minimal, targeted code change to address the feedback. Do NOT refactor unrelated code.
+
+**Step 3 — Verify tests pass (REQUIRED before declaring \`actionable: true\`)**
+This is critical: a previous run pushed code that broke CI. You must verify locally.
+
+a. Identify the test runner from the repo. Examples (in priority order):
+   - \`package.json\` "scripts.test" → run \`npm test\` (or \`pnpm test\` / \`yarn test\` if those lockfiles exist)
+   - \`package.json\` "scripts" with names like \`test:unit\`, \`test:ci\` → prefer the CI-style script
+   - \`pyproject.toml\` / \`pytest.ini\` → run \`pytest\`
+   - \`go.mod\` → run \`go test ./...\`
+   - \`Cargo.toml\` → run \`cargo test\`
+   - \`.github/workflows/*.yml\` — read it to learn the actual CI test command and mirror it
+   If multiple options exist, prefer the one CI uses.
+
+b. Run the test command using the Bash tool.
+
+c. Interpret the result:
+   - **All tests pass** → proceed to Step 4 with \`actionable: true\`.
+   - **Tests fail because of YOUR change** → fix the code so they pass. You may iterate. If you cannot make them pass while still addressing the original feedback, **revert your changes** (\`git checkout -- <files>\`) and emit \`actionable: false\` with a reason that names the failing test(s).
+   - **Tests fail for unrelated reasons** (pre-existing failure on the PR branch before you touched it) → state this explicitly in \`summary\` (e.g., "tests pre-existing failure in X, unrelated to this change") and proceed with \`actionable: true\`. Confirm by checking that the failing tests don't reference files you modified.
+   - **No test runner found / tests cannot run locally** (require a database, secrets, network) → set \`tests_run: false\` and explain in \`summary\`. Proceed with \`actionable: true\` only if you are confident your change is safe without running tests.
+
+d. **Never** emit \`actionable: true\` while tests you ran are failing because of your edits. That is the failure mode this rule exists to prevent.
+
+**Step 4 — Output the JSON decision**
+
+Output ONLY one of these JSON objects as the last thing you write:
 
 \`\`\`json
 {
   "actionable": true,
-  "summary": "Brief description of what was changed and why",
+  "summary": "What was changed and why. Include a one-line note about test verification (e.g., 'Tests: 142 passed via npm test' or 'Tests: skipped — no test runner detected').",
   "files_modified": ["path/to/file.js"],
+  "tests_run": true,
+  "tests_passed": true,
   "reason": ""
 }
 \`\`\`
 
-OR if not actionable:
+OR if not actionable / unfixable:
 
 \`\`\`json
 {
   "actionable": false,
   "summary": "",
   "files_modified": [],
-  "reason": "Clear explanation of why no change was made"
+  "tests_run": false,
+  "tests_passed": false,
+  "reason": "Clear explanation — including any failing tests if you tried and reverted"
 }
 \`\`\`
 
-Remember: Only output the JSON block at the very end. Do your thinking and file operations first.
+Remember: do all the thinking, editing, and test-running first. The JSON block is the very last thing in your output.
 `.trim();
 }
 
