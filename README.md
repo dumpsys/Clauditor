@@ -133,6 +133,15 @@ Notes:
 - `issue_comment` also fires for plain issues — the bot ignores those. For PR-attached issue comments the head ref isn't in the payload, so the bot fetches the PR via the GitHub API to learn the branch.
 - `pull_request` covers many actions; only `review_requested` is processed, and only when the requested reviewer matches `GITHUB_REVIEW_REQUEST_USER`. Team review requests are ignored. Leave the env var unset to disable the feature.
 
+### Comment-handler scoping rules
+
+The comment handler (Workflow A) applies two important guards before doing any work:
+
+1. **PR-author scope** — the bot only acts on PRs **authored by `GITHUB_BOT_USERNAME`**. Comments on someone else's PR are logged and skipped (no clone, no Claude run, no commit, no reply). This prevents the bot from pushing commits to branches you don't own.
+2. **Silent on non-actionable feedback** — when Claude decides the comment is vague, subjective, already-handled, or simply not a request for a change, the bot logs the reason locally and posts **nothing** on the PR. Only successful fixes generate a reply on GitHub.
+
+Together these mean the bot is silent on the PR unless it has actually made a commit on your behalf.
+
 ---
 
 ## Safety Features
@@ -179,14 +188,7 @@ Claude evaluates each comment and returns a structured JSON decision:
 What was done: Renamed variable `n` to `userCount` in auth.js lines 42-67
 ```
 
-**Not actionable** → Claude explains why and replies without touching code:
-```
-🤖 Claude Code reviewed this feedback but determined it may not require a code change
-
-> This looks fine to me
-
-Reason: The comment is an approval, not a request for changes.
-```
+**Not actionable** → the bot stays silent on the PR. The reason is logged locally for debugging, but no comment is posted (this avoids noise on threads where Claude has nothing useful to add).
 
 ---
 

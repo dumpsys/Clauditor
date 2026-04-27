@@ -39,6 +39,7 @@ async function buildContext(job) {
     repoCloneUrl: repo.clone_url,
     prNumber: pr.number,
     prTitle: pr.title,
+    prAuthor: pr.user?.login || "",
     branch: pr.head.ref,
     baseBranch: pr.base.ref,
     commentId: comment.id,
@@ -56,6 +57,17 @@ async function buildContext(job) {
  */
 export async function handleComment(job) {
   const context = await buildContext(job);
+
+  // Only act on PRs the bot's owner actually authored. Comments on someone
+  // else's PR don't get auto-fixed — the bot must not push commits to a
+  // branch it doesn't own.
+  if (context.prAuthor !== config.botUsername) {
+    logger.info(
+      `Skipping: PR #${context.prNumber} is authored by @${context.prAuthor || "unknown"}; ` +
+      `bot only acts on PRs by @${config.botUsername}`
+    );
+    return;
+  }
 
   // Protected-branch check: webhook layer already covers events whose payload
   // includes head.ref directly. For issue_comment we only learn the branch
@@ -79,8 +91,11 @@ export async function handleComment(job) {
     const result = await runClaudeCode(workDir, context);
 
     if (!result.actionable) {
-      logger.info(`Claude decided feedback is not actionable: ${result.reason}`);
-      await postReply(context, buildNotActionableReply(context, result));
+      // Stay silent on the PR — no comment, no noise. Just log for ourselves.
+      logger.info(
+        `Skipping reply: Claude decided feedback is not actionable. ` +
+        `Reason: ${result.reason || "(no reason given)"}`
+      );
       return;
     }
 
@@ -121,14 +136,3 @@ function buildSuccessReply(context, result, commitSha) {
   ].join("\n");
 }
 
-function buildNotActionableReply(context, result) {
-  return [
-    `🤖 **Claude Code reviewed this feedback** but determined it may not require a code change:`,
-    "",
-    `> ${context.commentBody}`,
-    "",
-    `**Reason:** ${result.reason}`,
-    "",
-    `_If you believe a change is needed, please clarify the feedback or make the edit directly._`,
-  ].join("\n");
-}
