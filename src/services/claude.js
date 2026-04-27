@@ -159,7 +159,23 @@ function spawnClaude(args, prompt, cwd) {
           `stderr: ${truncate(stderr) || "(empty)"}\n` +
           `stdout: ${truncate(stdout) || "(empty)"}`
         );
-        reject(new Error(`Claude Code failed with exit code ${code}`));
+
+        // Surface the actual reason in the rejection error if Claude returned
+        // a structured error envelope (auth failures, rate limits, etc.).
+        let detail = "";
+        try {
+          const parsed = JSON.parse(stdout);
+          if (parsed?.is_error) {
+            const status = parsed.api_error_status ? ` HTTP ${parsed.api_error_status}` : "";
+            const msg = parsed.result || parsed.error || "unknown error";
+            detail = ` —${status} ${msg}`;
+            if (parsed.api_error_status === 401) {
+              detail += ` (hint: unset ANTHROPIC_API_KEY if you rely on \`claude auth login\`, or set a valid key)`;
+            }
+          }
+        } catch { /* not JSON, ignore */ }
+
+        reject(new Error(`Claude Code failed with exit code ${code}${detail}`));
         return;
       }
 
