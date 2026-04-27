@@ -151,7 +151,14 @@ function spawnClaude(args, prompt, cwd) {
       const stderr = Buffer.concat(errorChunks).toString("utf-8");
 
       if (code !== 0) {
-        logger.error(`Claude Code exited with code ${code}\nstderr: ${stderr}`);
+        // With --output-format json, Claude often emits its error envelope on
+        // stdout, not stderr — so log both. Truncate to keep logs readable.
+        const truncate = (s, n = 4000) => (s.length > n ? s.slice(0, n) + `\n…(${s.length - n} more chars truncated)` : s);
+        logger.error(
+          `Claude Code exited with code ${code}\n` +
+          `stderr: ${truncate(stderr) || "(empty)"}\n` +
+          `stdout: ${truncate(stdout) || "(empty)"}`
+        );
         reject(new Error(`Claude Code failed with exit code ${code}`));
         return;
       }
