@@ -17,7 +17,13 @@ if [ ! -f "$BOT_DIR/.env" ]; then
   exit 1
 fi
 
+# `set -a` auto-exports every variable assigned while sourcing, so the
+# values reach child processes (node, tailscale). Without this, `source`
+# would only define them in the current shell.
+set -a
+# shellcheck disable=SC1091
 source "$BOT_DIR/.env"
+set +a
 
 for var in GITHUB_TOKEN GITHUB_WEBHOOK_SECRET GITHUB_BOT_USERNAME; do
   if [ -z "${!var:-}" ]; then
