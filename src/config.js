@@ -21,6 +21,14 @@ export const config = {
     .filter(Boolean),
   gitEmail: process.env.GIT_EMAIL || "pr-bot@localhost",
   gitName: process.env.GIT_NAME || "PR Review Bot",
+  // Default 5 min — for the comment handler, which makes one targeted edit.
   claudeTimeoutMs: parseInt(process.env.CLAUDE_TIMEOUT_MS || "300000", 10),
+  // Default 20 min — reviews of substantial PRs legitimately need more time.
+  // Falls back to claudeTimeoutMs * 4 if explicitly unset to keep things in scale.
+  claudeReviewTimeoutMs: parseInt(
+    process.env.CLAUDE_REVIEW_TIMEOUT_MS ||
+      String(parseInt(process.env.CLAUDE_TIMEOUT_MS || "300000", 10) * 4),
+    10
+  ),
   logLevel: process.env.LOG_LEVEL?.toLowerCase() || "info",
 };

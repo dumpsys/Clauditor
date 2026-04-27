@@ -21,7 +21,7 @@ export async function runClaudeCode(workDir, context) {
     "--max-turns", "10",
   ];
 
-  const output = await spawnClaude(args, prompt, workDir);
+  const output = await spawnClaude(args, prompt, workDir, config.claudeTimeoutMs);
   return parseClaudeOutput(output);
 }
 
@@ -43,10 +43,11 @@ export async function runClaudeReview(workDir, context) {
   ];
 
   logger.info(
-    `Running: claude -p /review (PR #${context.prNumber}, ${context.baseBranch}...${context.headBranch})`
+    `Running: claude -p /review (PR #${context.prNumber}, ${context.baseBranch}...${context.headBranch}, ` +
+    `timeout ${Math.round(config.claudeReviewTimeoutMs / 1000)}s)`
   );
 
-  const output = await spawnClaude(args, /* stdinPrompt */ null, workDir);
+  const output = await spawnClaude(args, /* stdinPrompt */ null, workDir, config.claudeReviewTimeoutMs);
   return extractReviewText(output);
 }
 
@@ -118,7 +119,7 @@ Remember: Only output the JSON block at the very end. Do your thinking and file 
 `.trim();
 }
 
-function spawnClaude(args, prompt, cwd) {
+function spawnClaude(args, prompt, cwd, timeoutMs = config.claudeTimeoutMs) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     const errorChunks = [];
@@ -142,8 +143,8 @@ function spawnClaude(args, prompt, cwd) {
 
     const timeout = setTimeout(() => {
       proc.kill("SIGTERM");
-      reject(new Error(`Claude Code timed out after ${config.claudeTimeoutMs}ms`));
-    }, config.claudeTimeoutMs);
+      reject(new Error(`Claude Code timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
 
     proc.on("close", (code) => {
       clearTimeout(timeout);

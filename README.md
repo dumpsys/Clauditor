@@ -160,7 +160,8 @@ Notes:
 | `PROTECTED_BRANCHES` | | `main,master,develop` | Branches bot won't push to |
 | `GIT_EMAIL` | | `pr-bot@localhost` | Git commit email |
 | `GIT_NAME` | | `PR Review Bot` | Git commit name |
-| `CLAUDE_TIMEOUT_MS` | | `300000` | Max time for Claude to run (ms) |
+| `CLAUDE_TIMEOUT_MS` | | `300000` | Max time for the comment handler's Claude run (ms) |
+| `CLAUDE_REVIEW_TIMEOUT_MS` | | `4 × CLAUDE_TIMEOUT_MS` | Max time for `/review` jobs — reviews are heavier than comment fixes (ms) |
 | `LOG_LEVEL` | | `info` | `debug` / `info` / `warn` / `error` |
 
 ---
