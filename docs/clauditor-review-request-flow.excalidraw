@@ -8,8 +8,8 @@
       "type": "text",
       "x": 200,
       "y": 20,
-      "width": 700,
-      "height": 32,
+      "width": 571.4874877929688,
+      "height": 30,
       "angle": 0,
       "strokeColor": "#1e1e1e",
       "backgroundColor": "transparent",
@@ -22,21 +22,23 @@
       "frameId": null,
       "roundness": null,
       "seed": 98,
-      "version": 1,
-      "versionNonce": 425678445,
+      "version": 4,
+      "versionNonce": 1394184677,
       "isDeleted": false,
       "boundElements": [],
-      "updated": 1777211905356,
+      "updated": 1777297358437,
       "link": null,
       "locked": false,
       "text": "Workflow B — Auto-Review on Reviewer Request",
       "fontSize": 24,
-      "fontFamily": 1,
+      "fontFamily": 5,
       "textAlign": "left",
       "verticalAlign": "top",
       "containerId": null,
       "originalText": "Workflow B — Auto-Review on Reviewer Request",
-      "lineHeight": 1.25
+      "lineHeight": 1.25,
+      "index": "a0",
+      "autoResize": true
     },
     {
       "id": "r1",
@@ -44,7 +46,7 @@
       "x": 290,
       "y": 60,
       "width": 460,
-      "height": 70,
+      "height": 78,
       "angle": 0,
       "strokeColor": "#1e1e1e",
       "backgroundColor": "#a5d8ff",
@@ -59,8 +61,8 @@
         "type": 3
       },
       "seed": 99,
-      "version": 1,
-      "versionNonce": 706962768,
+      "version": 3,
+      "versionNonce": 2016939333,
       "isDeleted": false,
       "boundElements": [
         {
@@ -68,17 +70,18 @@
           "id": "r1-t"
         }
       ],
-      "updated": 1777211905356,
+      "updated": 1777297358437,
       "link": null,
-      "locked": false
+      "locked": false,
+      "index": "a1"
     },
     {
       "id": "r1-t",
       "type": "text",
-      "x": 295,
-      "y": 72.5,
-      "width": 450,
-      "height": 45,
+      "x": 349.25205993652344,
+      "y": 65.25,
+      "width": 341.4958801269531,
+      "height": 67.5,
       "angle": 0,
       "strokeColor": "#1e1e1e",
       "backgroundColor": "transparent",
@@ -91,21 +94,23 @@
       "frameId": null,
       "roundness": null,
       "seed": 100,
-      "version": 1,
-      "versionNonce": 1838460571,
+      "version": 4,
+      "versionNonce": 514858149,
       "isDeleted": false,
       "boundElements": [],
-      "updated": 1777211905356,
+      "updated": 1777297358437,
       "link": null,
       "locked": false,
-      "text": "Someone requests $GITHUB_REVIEW_REQUEST_USER\nas a reviewer on a PR",
+      "text": "Someone requests\n$GITHUB_REVIEW_REQUEST_USER\nas a reviewer on a PR",
       "fontSize": 18,
-      "fontFamily": 1,
+      "fontFamily": 5,
       "textAlign": "center",
       "verticalAlign": "middle",
       "containerId": "r1",
       "originalText": "Someone requests $GITHUB_REVIEW_REQUEST_USER\nas a reviewer on a PR",
-      "lineHeight": 1.25
+      "lineHeight": 1.25,
+      "index": "a2",
+      "autoResize": true
     },
     {
       "id": "r2",
@@ -128,8 +133,8 @@
         "type": 3
       },
       "seed": 101,
-      "version": 1,
-      "versionNonce": 958326052,
+      "version": 2,
+      "versionNonce": 824198219,
       "isDeleted": false,
       "boundElements": [
         {
@@ -137,16 +142,17 @@
           "id": "r2-t"
         }
       ],
-      "updated": 1777211905356,
+      "updated": 1777297353630,
       "link": null,
-      "locked": false
+      "locked": false,
+      "index": "a3"
     },
     {
       "id": "r2-t",
       "type": "text",
-      "x": 295,
+      "x": 376.5400848388672,
       "y": 182.5,
-      "width": 450,
+      "width": 286.9198303222656,
       "height": 45,
       "angle": 0,
       "strokeColor": "#1e1e1e",
@@ -160,21 +166,23 @@
       "frameId": null,
       "roundness": null,
       "seed": 102,
-      "version": 1,
-      "versionNonce": 539130409,
+      "version": 4,
+      "versionNonce": 237977605,
       "isDeleted": false,
       "boundElements": [],
-      "updated": 1777211905356,
+      "updated": 1777297358437,
       "link": null,
       "locked": false,
       "text": "GitHub fires \"pull_request\" event\n(action = review_requested)",
       "fontSize": 18,
-      "fontFamily": 1,
+      "fontFamily": 5,
       "textAlign": "center",
       "verticalAlign": "middle",
       "containerId": "r2",
       "originalText": "GitHub fires \"pull_request\" event\n(action = review_requested)",
-      "lineHeight": 1.25
+      "lineHeight": 1.25,
+      "index": "a4",
+      "autoResize": true
     },
     {
       "id": "arr-r2",
@@ -197,11 +205,11 @@
         "type": 2
       },
       "seed": 103,
-      "version": 1,
-      "versionNonce": 230944903,
+      "version": 2,
+      "versionNonce": 1556579051,
       "isDeleted": false,
       "boundElements": [],
-      "updated": 1777211905356,
+      "updated": 1777297353630,
       "link": null,
       "locked": false,
       "points": [
@@ -216,23 +224,30 @@
       ],
       "lastCommittedPoint": null,
       "startBinding": {
+        "mode": "orbit",
         "elementId": "r1",
-        "focus": 0,
-        "gap": 5
+        "fixedPoint": [
+          0.5001,
+          0.5001
+        ]
       },
       "endBinding": {
+        "mode": "orbit",
         "elementId": "r2",
-        "focus": 0,
-        "gap": 5
+        "fixedPoint": [
+          0.5001,
+          0.5001
+        ]
       },
       "startArrowhead": null,
-      "endArrowhead": "arrow"
+      "endArrowhead": "arrow",
+      "index": "a5"
     },
     {
       "id": "r3",
       "type": "rectangle",
       "x": 290,
-      "y": 280,
+      "y": 279.875,
       "width": 460,
       "height": 60,
       "angle": 0,
@@ -249,8 +264,8 @@
         "type": 3
       },
       "seed": 104,
-      "version": 1,
-      "versionNonce": 1247374481,
+      "version": 3,
+      "versionNonce": 1474208683,
       "isDeleted": false,
       "boundElements": [
         {
@@ -258,16 +273,17 @@
           "id": "r3-t"
         }
       ],
-      "updated": 1777211905356,
+      "updated": 1777297361912,
       "link": null,
-      "locked": false
+      "locked": false,
+      "index": "a6"
     },
     {
       "id": "r3-t",
       "type": "text",
-      "x": 295,
-      "y": 298.75,
-      "width": 450,
+      "x": 316.6450958251953,
+      "y": 298.625,
+      "width": 406.7098083496094,
       "height": 22.5,
       "angle": 0,
       "strokeColor": "#1e1e1e",
@@ -281,21 +297,23 @@
       "frameId": null,
       "roundness": null,
       "seed": 105,
-      "version": 1,
-      "versionNonce": 1156876107,
+      "version": 5,
+      "versionNonce": 256046667,
       "isDeleted": false,
       "boundElements": [],
-      "updated": 1777211905356,
+      "updated": 1777297361912,
       "link": null,
       "locked": false,
       "text": "POST /webhook   →   verifySignature (HMAC)",
       "fontSize": 18,
-      "fontFamily": 1,
+      "fontFamily": 5,
       "textAlign": "center",
       "verticalAlign": "middle",
       "containerId": "r3",
       "originalText": "POST /webhook   →   verifySignature (HMAC)",
-      "lineHeight": 1.25
+      "lineHeight": 1.25,
+      "index": "a7",
+      "autoResize": true
     },
     {
       "id": "arr-r3",
@@ -318,11 +336,11 @@
         "type": 2
       },
       "seed": 106,
-      "version": 1,
-      "versionNonce": 372173342,
+      "version": 2,
+      "versionNonce": 1811530917,
       "isDeleted": false,
       "boundElements": [],
-      "updated": 1777211905356,
+      "updated": 1777297353630,
       "link": null,
       "locked": false,
       "points": [
@@ -337,17 +355,24 @@
       ],
       "lastCommittedPoint": null,
       "startBinding": {
+        "mode": "orbit",
         "elementId": "r2",
-        "focus": 0,
-        "gap": 5
+        "fixedPoint": [
+          0.5001,
+          0.5001
+        ]
       },
       "endBinding": {
+        "mode": "orbit",
         "elementId": "r3",
-        "focus": 0,
-        "gap": 5
+        "fixedPoint": [
+          0.5001,
+          0.5001
+        ]
       },
       "startArrowhead": null,
-      "endArrowhead": "arrow"
+      "endArrowhead": "arrow",
+      "index": "a8"
     },
     {
       "id": "r4",
@@ -370,8 +395,8 @@
         "type": 3
       },
       "seed": 107,
-      "version": 1,
-      "versionNonce": 1071953582,
+      "version": 2,
+      "versionNonce": 1022231595,
       "isDeleted": false,
       "boundElements": [
         {
@@ -379,16 +404,17 @@
           "id": "r4-t"
         }
       ],
-      "updated": 1777211905356,
+      "updated": 1777297353630,
       "link": null,
-      "locked": false
+      "locked": false,
+      "index": "a9"
     },
     {
       "id": "r4-t",
       "type": "text",
-      "x": 295,
+      "x": 327.2021179199219,
       "y": 386.25,
-      "width": 450,
+      "width": 385.59576416015625,
       "height": 67.5,
       "angle": 0,
       "strokeColor": "#1e1e1e",
@@ -402,21 +428,23 @@
       "frameId": null,
       "roundness": null,
       "seed": 108,
-      "version": 1,
-      "versionNonce": 25458013,
+      "version": 4,
+      "versionNonce": 76071621,
       "isDeleted": false,
       "boundElements": [],
-      "updated": 1777211905356,
+      "updated": 1777297358438,
       "link": null,
       "locked": false,
       "text": "Filter:\n• action = review_requested\n• requested_reviewer.login = configured user",
       "fontSize": 18,
-      "fontFamily": 1,
+      "fontFamily": 5,
       "textAlign": "center",
       "verticalAlign": "middle",
       "containerId": "r4",
       "originalText": "Filter:\n• action = review_requested\n• requested_reviewer.login = configured user",
-      "lineHeight": 1.25
+      "lineHeight": 1.25,
+      "index": "aA",
+      "autoResize": true
     },
     {
       "id": "arr-r4",
@@ -439,11 +467,11 @@
         "type": 2
       },
       "seed": 109,
-      "version": 1,
-      "versionNonce": 1122277503,
+      "version": 2,
+      "versionNonce": 1284654795,
       "isDeleted": false,
       "boundElements": [],
-      "updated": 1777211905356,
+      "updated": 1777297353630,
       "link": null,
       "locked": false,
       "points": [
@@ -458,17 +486,24 @@
       ],
       "lastCommittedPoint": null,
       "startBinding": {
+        "mode": "orbit",
         "elementId": "r3",
-        "focus": 0,
-        "gap": 5
+        "fixedPoint": [
+          0.5001,
+          0.5001
+        ]
       },
       "endBinding": {
+        "mode": "orbit",
         "elementId": "r4",
-        "focus": 0,
-        "gap": 5
+        "fixedPoint": [
+          0.5001,
+          0.5001
+        ]
       },
       "startArrowhead": null,
-      "endArrowhead": "arrow"
+      "endArrowhead": "arrow",
+      "index": "aB"
     },
     {
       "id": "r5",
@@ -491,8 +526,8 @@
         "type": 3
       },
       "seed": 110,
-      "version": 1,
-      "versionNonce": 1215594313,
+      "version": 2,
+      "versionNonce": 833789797,
       "isDeleted": false,
       "boundElements": [
         {
@@ -500,16 +535,17 @@
           "id": "r5-t"
         }
       ],
-      "updated": 1777211905356,
+      "updated": 1777297353630,
       "link": null,
-      "locked": false
+      "locked": false,
+      "index": "aC"
     },
     {
       "id": "r5-t",
       "type": "text",
-      "x": 295,
+      "x": 387.84405517578125,
       "y": 513.75,
-      "width": 450,
+      "width": 264.3118896484375,
       "height": 22.5,
       "angle": 0,
       "strokeColor": "#1e1e1e",
@@ -523,21 +559,23 @@
       "frameId": null,
       "roundness": null,
       "seed": 111,
-      "version": 1,
-      "versionNonce": 1204431666,
+      "version": 4,
+      "versionNonce": 441328165,
       "isDeleted": false,
       "boundElements": [],
-      "updated": 1777211905356,
+      "updated": 1777297358438,
       "link": null,
       "locked": false,
       "text": "queue.add(job)   →   dispatch",
       "fontSize": 18,
-      "fontFamily": 1,
+      "fontFamily": 5,
       "textAlign": "center",
       "verticalAlign": "middle",
       "containerId": "r5",
       "originalText": "queue.add(job)   →   dispatch",
-      "lineHeight": 1.25
+      "lineHeight": 1.25,
+      "index": "aD",
+      "autoResize": true
     },
     {
       "id": "arr-r5",
@@ -560,11 +598,11 @@
         "type": 2
       },
       "seed": 112,
-      "version": 1,
-      "versionNonce": 553246564,
+      "version": 2,
+      "versionNonce": 190016197,
       "isDeleted": false,
       "boundElements": [],
-      "updated": 1777211905356,
+      "updated": 1777297353630,
       "link": null,
       "locked": false,
       "points": [
@@ -579,17 +617,24 @@
       ],
       "lastCommittedPoint": null,
       "startBinding": {
+        "mode": "orbit",
         "elementId": "r4",
-        "focus": 0,
-        "gap": 5
+        "fixedPoint": [
+          0.5001,
+          0.5001
+        ]
       },
       "endBinding": {
+        "mode": "orbit",
         "elementId": "r5",
-        "focus": 0,
-        "gap": 5
+        "fixedPoint": [
+          0.5001,
+          0.5001
+        ]
       },
       "startArrowhead": null,
-      "endArrowhead": "arrow"
+      "endArrowhead": "arrow",
+      "index": "aE"
     },
     {
       "id": "r6",
@@ -612,8 +657,8 @@
         "type": 3
       },
       "seed": 113,
-      "version": 1,
-      "versionNonce": 553637648,
+      "version": 2,
+      "versionNonce": 369184779,
       "isDeleted": false,
       "boundElements": [
         {
@@ -621,16 +666,17 @@
           "id": "r6-t"
         }
       ],
-      "updated": 1777211905356,
+      "updated": 1777297353630,
       "link": null,
-      "locked": false
+      "locked": false,
+      "index": "aF"
     },
     {
       "id": "r6-t",
       "type": "text",
-      "x": 295,
+      "x": 406.4380798339844,
       "y": 603.75,
-      "width": 450,
+      "width": 227.12384033203125,
       "height": 22.5,
       "angle": 0,
       "strokeColor": "#1e1e1e",
@@ -644,21 +690,23 @@
       "frameId": null,
       "roundness": null,
       "seed": 114,
-      "version": 1,
-      "versionNonce": 405453491,
+      "version": 4,
+      "versionNonce": 1123063173,
       "isDeleted": false,
       "boundElements": [],
-      "updated": 1777211905356,
+      "updated": 1777297358438,
       "link": null,
       "locked": false,
       "text": "handlers/reviewRequest.js",
       "fontSize": 18,
-      "fontFamily": 1,
+      "fontFamily": 5,
       "textAlign": "center",
       "verticalAlign": "middle",
       "containerId": "r6",
       "originalText": "handlers/reviewRequest.js",
-      "lineHeight": 1.25
+      "lineHeight": 1.25,
+      "index": "aG",
+      "autoResize": true
     },
     {
       "id": "arr-r6",
@@ -681,11 +729,11 @@
         "type": 2
       },
       "seed": 115,
-      "version": 1,
-      "versionNonce": 206743344,
+      "version": 2,
+      "versionNonce": 1628509867,
       "isDeleted": false,
       "boundElements": [],
-      "updated": 1777211905356,
+      "updated": 1777297353630,
       "link": null,
       "locked": false,
       "points": [
@@ -700,17 +748,24 @@
       ],
       "lastCommittedPoint": null,
       "startBinding": {
+        "mode": "orbit",
         "elementId": "r5",
-        "focus": 0,
-        "gap": 5
+        "fixedPoint": [
+          0.5001,
+          0.5001
+        ]
       },
       "endBinding": {
+        "mode": "orbit",
         "elementId": "r6",
-        "focus": 0,
-        "gap": 5
+        "fixedPoint": [
+          0.5001,
+          0.5001
+        ]
       },
       "startArrowhead": null,
-      "endArrowhead": "arrow"
+      "endArrowhead": "arrow",
+      "index": "aH"
     },
     {
       "id": "r7",
@@ -733,8 +788,8 @@
         "type": 3
       },
       "seed": 116,
-      "version": 1,
-      "versionNonce": 1441881076,
+      "version": 2,
+      "versionNonce": 1160854917,
       "isDeleted": false,
       "boundElements": [
         {
@@ -742,16 +797,17 @@
           "id": "r7-t"
         }
       ],
-      "updated": 1777211905356,
+      "updated": 1777297353630,
       "link": null,
-      "locked": false
+      "locked": false,
+      "index": "aI"
     },
     {
       "id": "r7-t",
       "type": "text",
-      "x": 295,
+      "x": 357.1271057128906,
       "y": 697.5,
-      "width": 450,
+      "width": 325.74578857421875,
       "height": 45,
       "angle": 0,
       "strokeColor": "#1e1e1e",
@@ -765,21 +821,23 @@
       "frameId": null,
       "roundness": null,
       "seed": 117,
-      "version": 1,
-      "versionNonce": 1805257385,
+      "version": 4,
+      "versionNonce": 1236114661,
       "isDeleted": false,
       "boundElements": [],
-      "updated": 1777211905356,
+      "updated": 1777297358438,
       "link": null,
       "locked": false,
       "text": "gitOperations.cloneForReview\n(full clone — head + base for diffing)",
       "fontSize": 18,
-      "fontFamily": 1,
+      "fontFamily": 5,
       "textAlign": "center",
       "verticalAlign": "middle",
       "containerId": "r7",
       "originalText": "gitOperations.cloneForReview\n(full clone — head + base for diffing)",
-      "lineHeight": 1.25
+      "lineHeight": 1.25,
+      "index": "aJ",
+      "autoResize": true
     },
     {
       "id": "arr-r7",
@@ -802,11 +860,11 @@
         "type": 2
       },
       "seed": 118,
-      "version": 1,
-      "versionNonce": 1665588508,
+      "version": 2,
+      "versionNonce": 228148453,
       "isDeleted": false,
       "boundElements": [],
-      "updated": 1777211905356,
+      "updated": 1777297353630,
       "link": null,
       "locked": false,
       "points": [
@@ -821,17 +879,24 @@
       ],
       "lastCommittedPoint": null,
       "startBinding": {
+        "mode": "orbit",
         "elementId": "r6",
-        "focus": 0,
-        "gap": 5
+        "fixedPoint": [
+          0.5001,
+          0.5001
+        ]
       },
       "endBinding": {
+        "mode": "orbit",
         "elementId": "r7",
-        "focus": 0,
-        "gap": 5
+        "fixedPoint": [
+          0.5001,
+          0.5001
+        ]
       },
       "startArrowhead": null,
-      "endArrowhead": "arrow"
+      "endArrowhead": "arrow",
+      "index": "aK"
     },
     {
       "id": "r8",
@@ -854,8 +919,8 @@
         "type": 3
       },
       "seed": 119,
-      "version": 1,
-      "versionNonce": 1455824502,
+      "version": 2,
+      "versionNonce": 657827819,
       "isDeleted": false,
       "boundElements": [
         {
@@ -863,16 +928,17 @@
           "id": "r8-t"
         }
       ],
-      "updated": 1777211905356,
+      "updated": 1777297353630,
       "link": null,
-      "locked": false
+      "locked": false,
+      "index": "aL"
     },
     {
       "id": "r8-t",
       "type": "text",
-      "x": 295,
+      "x": 343.20411682128906,
       "y": 812.5,
-      "width": 450,
+      "width": 353.5917663574219,
       "height": 45,
       "angle": 0,
       "strokeColor": "#1e1e1e",
@@ -886,21 +952,23 @@
       "frameId": null,
       "roundness": null,
       "seed": 120,
-      "version": 1,
-      "versionNonce": 517033380,
+      "version": 4,
+      "versionNonce": 907196485,
       "isDeleted": false,
       "boundElements": [],
-      "updated": 1777211905356,
+      "updated": 1777297358438,
       "link": null,
       "locked": false,
       "text": "runClaudeReview\nclaude -p \"/review\" --output-format json",
       "fontSize": 18,
-      "fontFamily": 1,
+      "fontFamily": 5,
       "textAlign": "center",
       "verticalAlign": "middle",
       "containerId": "r8",
       "originalText": "runClaudeReview\nclaude -p \"/review\" --output-format json",
-      "lineHeight": 1.25
+      "lineHeight": 1.25,
+      "index": "aM",
+      "autoResize": true
     },
     {
       "id": "arr-r8",
@@ -923,11 +991,11 @@
         "type": 2
       },
       "seed": 121,
-      "version": 1,
-      "versionNonce": 300692526,
+      "version": 2,
+      "versionNonce": 498037387,
       "isDeleted": false,
       "boundElements": [],
-      "updated": 1777211905356,
+      "updated": 1777297353630,
       "link": null,
       "locked": false,
       "points": [
@@ -942,17 +1010,24 @@
       ],
       "lastCommittedPoint": null,
       "startBinding": {
+        "mode": "orbit",
         "elementId": "r7",
-        "focus": 0,
-        "gap": 5
+        "fixedPoint": [
+          0.5001,
+          0.5001
+        ]
       },
       "endBinding": {
+        "mode": "orbit",
         "elementId": "r8",
-        "focus": 0,
-        "gap": 5
+        "fixedPoint": [
+          0.5001,
+          0.5001
+        ]
       },
       "startArrowhead": null,
-      "endArrowhead": "arrow"
+      "endArrowhead": "arrow",
+      "index": "aN"
     },
     {
       "id": "r9",
@@ -975,8 +1050,8 @@
         "type": 3
       },
       "seed": 122,
-      "version": 1,
-      "versionNonce": 1252931300,
+      "version": 2,
+      "versionNonce": 1830752165,
       "isDeleted": false,
       "boundElements": [
         {
@@ -984,16 +1059,17 @@
           "id": "r9-t"
         }
       ],
-      "updated": 1777211905356,
+      "updated": 1777297353630,
       "link": null,
-      "locked": false
+      "locked": false,
+      "index": "aO"
     },
     {
       "id": "r9-t",
       "type": "text",
-      "x": 295,
+      "x": 345.1841125488281,
       "y": 928.75,
-      "width": 450,
+      "width": 349.63177490234375,
       "height": 22.5,
       "angle": 0,
       "strokeColor": "#1e1e1e",
@@ -1007,21 +1083,23 @@
       "frameId": null,
       "roundness": null,
       "seed": 123,
-      "version": 1,
-      "versionNonce": 1554173768,
+      "version": 4,
+      "versionNonce": 1107126181,
       "isDeleted": false,
       "boundElements": [],
-      "updated": 1777211905356,
+      "updated": 1777297358438,
       "link": null,
       "locked": false,
       "text": "Extract review text from JSON wrapper",
       "fontSize": 18,
-      "fontFamily": 1,
+      "fontFamily": 5,
       "textAlign": "center",
       "verticalAlign": "middle",
       "containerId": "r9",
       "originalText": "Extract review text from JSON wrapper",
-      "lineHeight": 1.25
+      "lineHeight": 1.25,
+      "index": "aP",
+      "autoResize": true
     },
     {
       "id": "arr-r9",
@@ -1044,11 +1122,11 @@
         "type": 2
       },
       "seed": 124,
-      "version": 1,
-      "versionNonce": 1826479329,
+      "version": 2,
+      "versionNonce": 944231173,
       "isDeleted": false,
       "boundElements": [],
-      "updated": 1777211905356,
+      "updated": 1777297353630,
       "link": null,
       "locked": false,
       "points": [
@@ -1063,17 +1141,24 @@
       ],
       "lastCommittedPoint": null,
       "startBinding": {
+        "mode": "orbit",
         "elementId": "r8",
-        "focus": 0,
-        "gap": 5
+        "fixedPoint": [
+          0.5001,
+          0.5001
+        ]
       },
       "endBinding": {
+        "mode": "orbit",
         "elementId": "r9",
-        "focus": 0,
-        "gap": 5
+        "fixedPoint": [
+          0.5001,
+          0.5001
+        ]
       },
       "startArrowhead": null,
-      "endArrowhead": "arrow"
+      "endArrowhead": "arrow",
+      "index": "aQ"
     },
     {
       "id": "r10",
@@ -1096,8 +1181,8 @@
         "type": 3
       },
       "seed": 125,
-      "version": 1,
-      "versionNonce": 1104807528,
+      "version": 2,
+      "versionNonce": 790006731,
       "isDeleted": false,
       "boundElements": [
         {
@@ -1105,16 +1190,17 @@
           "id": "r10-t"
         }
       ],
-      "updated": 1777211905356,
+      "updated": 1777297353630,
       "link": null,
-      "locked": false
+      "locked": false,
+      "index": "aR"
     },
     {
       "id": "r10-t",
       "type": "text",
-      "x": 295,
+      "x": 344.90509033203125,
       "y": 1027.5,
-      "width": 450,
+      "width": 350.1898193359375,
       "height": 45,
       "angle": 0,
       "strokeColor": "#1e1e1e",
@@ -1128,21 +1214,23 @@
       "frameId": null,
       "roundness": null,
       "seed": 126,
-      "version": 1,
-      "versionNonce": 29625988,
+      "version": 4,
+      "versionNonce": 261827333,
       "isDeleted": false,
       "boundElements": [],
-      "updated": 1777211905356,
+      "updated": 1777297358438,
       "link": null,
       "locked": false,
       "text": "postReview → POST /pulls/{n}/reviews\n{ body: …, event: \"COMMENT\" }",
       "fontSize": 18,
-      "fontFamily": 1,
+      "fontFamily": 5,
       "textAlign": "center",
       "verticalAlign": "middle",
       "containerId": "r10",
       "originalText": "postReview → POST /pulls/{n}/reviews\n{ body: …, event: \"COMMENT\" }",
-      "lineHeight": 1.25
+      "lineHeight": 1.25,
+      "index": "aS",
+      "autoResize": true
     },
     {
       "id": "arr-r10",
@@ -1165,11 +1253,11 @@
         "type": 2
       },
       "seed": 127,
-      "version": 1,
-      "versionNonce": 1999754296,
+      "version": 2,
+      "versionNonce": 1669913195,
       "isDeleted": false,
       "boundElements": [],
-      "updated": 1777211905356,
+      "updated": 1777297353630,
       "link": null,
       "locked": false,
       "points": [
@@ -1184,17 +1272,24 @@
       ],
       "lastCommittedPoint": null,
       "startBinding": {
+        "mode": "orbit",
         "elementId": "r9",
-        "focus": 0,
-        "gap": 5
+        "fixedPoint": [
+          0.5001,
+          0.5001
+        ]
       },
       "endBinding": {
+        "mode": "orbit",
         "elementId": "r10",
-        "focus": 0,
-        "gap": 5
+        "fixedPoint": [
+          0.5001,
+          0.5001
+        ]
       },
       "startArrowhead": null,
-      "endArrowhead": "arrow"
+      "endArrowhead": "arrow",
+      "index": "aT"
     },
     {
       "id": "r11",
@@ -1217,8 +1312,8 @@
         "type": 3
       },
       "seed": 128,
-      "version": 1,
-      "versionNonce": 249578211,
+      "version": 2,
+      "versionNonce": 433624517,
       "isDeleted": false,
       "boundElements": [
         {
@@ -1226,16 +1321,17 @@
           "id": "r11-t"
         }
       ],
-      "updated": 1777211905356,
+      "updated": 1777297353630,
       "link": null,
-      "locked": false
+      "locked": false,
+      "index": "aU"
     },
     {
       "id": "r11-t",
       "type": "text",
-      "x": 295,
+      "x": 323.51214599609375,
       "y": 1142.5,
-      "width": 450,
+      "width": 392.9757080078125,
       "height": 45,
       "angle": 0,
       "strokeColor": "#1e1e1e",
@@ -1249,21 +1345,23 @@
       "frameId": null,
       "roundness": null,
       "seed": 129,
-      "version": 1,
-      "versionNonce": 1305276651,
+      "version": 4,
+      "versionNonce": 527008357,
       "isDeleted": false,
       "boundElements": [],
-      "updated": 1777211905356,
+      "updated": 1777297358438,
       "link": null,
       "locked": false,
       "text": "Formal review appears on PR ✅\n(authored by configured user / token owner)",
       "fontSize": 18,
-      "fontFamily": 1,
+      "fontFamily": 5,
       "textAlign": "center",
       "verticalAlign": "middle",
       "containerId": "r11",
       "originalText": "Formal review appears on PR ✅\n(authored by configured user / token owner)",
-      "lineHeight": 1.25
+      "lineHeight": 1.25,
+      "index": "aV",
+      "autoResize": true
     },
     {
       "id": "arr-r11",
@@ -1286,11 +1384,11 @@
         "type": 2
       },
       "seed": 130,
-      "version": 1,
-      "versionNonce": 886569832,
+      "version": 2,
+      "versionNonce": 1009489189,
       "isDeleted": false,
       "boundElements": [],
-      "updated": 1777211905356,
+      "updated": 1777297353630,
       "link": null,
       "locked": false,
       "points": [
@@ -1305,22 +1403,32 @@
       ],
       "lastCommittedPoint": null,
       "startBinding": {
+        "mode": "orbit",
         "elementId": "r10",
-        "focus": 0,
-        "gap": 5
+        "fixedPoint": [
+          0.5001,
+          0.5001
+        ]
       },
       "endBinding": {
+        "mode": "orbit",
         "elementId": "r11",
-        "focus": 0,
-        "gap": 5
+        "fixedPoint": [
+          0.5001,
+          0.5001
+        ]
       },
       "startArrowhead": null,
-      "endArrowhead": "arrow"
+      "endArrowhead": "arrow",
+      "index": "aW"
     }
   ],
   "appState": {
-    "gridSize": null,
-    "viewBackgroundColor": "#ffffff"
+    "gridSize": 20,
+    "gridStep": 5,
+    "gridModeEnabled": false,
+    "viewBackgroundColor": "#ffffff",
+    "lockedMultiSelections": {}
   },
   "files": {}
 }
