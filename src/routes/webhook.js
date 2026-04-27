@@ -13,6 +13,17 @@ const HANDLED_EVENTS = new Set([
   "pull_request",                // only the `review_requested` action is processed below
 ]);
 
+// Each GitHub event uses a different action name for "this just happened":
+//   pull_request_review_comment → created
+//   issue_comment               → created
+//   pull_request_review         → submitted   (NOT "created")
+// Other actions (edited / deleted / dismissed) are intentionally skipped.
+const ACTION_FOR_EVENT = {
+  pull_request_review_comment: "created",
+  pull_request_review: "submitted",
+  issue_comment: "created",
+};
+
 router.post("/webhook", verifySignature, (req, res) => {
   const event = req.headers["x-github-event"];
   const payload = req.body;
@@ -50,8 +61,11 @@ router.post("/webhook", verifySignature, (req, res) => {
   }
 
   // ── comment-style events ───────────────────────────────────────────────────
-  if (payload.action !== "created") {
-    return res.status(200).json({ message: `Action '${payload.action}' ignored` });
+  const expectedAction = ACTION_FOR_EVENT[event];
+  if (payload.action !== expectedAction) {
+    return res.status(200).json({
+      message: `Action '${payload.action}' ignored for event '${event}' (expected '${expectedAction}')`,
+    });
   }
 
   // issue_comment fires for both Issues and PRs; only PR-attached comments
