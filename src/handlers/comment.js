@@ -43,13 +43,24 @@ async function buildContext(job) {
     branch: pr.head.ref,
     baseBranch: pr.base.ref,
     commentId: comment.id,
-    commentBody: comment.body,
+    commentBody: stripTriggerPhrase(comment.body, config.triggerPhrase),
     commentUrl: comment.html_url,
     diffHunk: comment.diff_hunk || null,
     filePath: comment.path || null,
     commitSha: pr.head.sha,
     commenter: comment.user.login,
   };
+}
+
+/**
+ * Remove the trigger phrase from a comment body so it doesn't pollute the
+ * Claude prompt or the commit message. Case-insensitive match, collapses
+ * resulting whitespace.
+ */
+function stripTriggerPhrase(body, phrase) {
+  if (!body || !phrase) return body || "";
+  const escaped = phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return body.replace(new RegExp(escaped, "gi"), "").replace(/[ \t]{2,}/g, " ").trim();
 }
 
 /**
@@ -125,10 +136,15 @@ async function postReply(context, body) {
 
 function buildSuccessReply(context, result, commitSha) {
   const repoUrl = `https://github.com/${context.owner}/${context.repoName}`;
+  // Link to the original comment instead of inline-quoting it — keeps the
+  // reply compact and avoids re-rendering long review bodies on the PR.
+  const commentLink = context.commentUrl
+    ? `[original comment](${context.commentUrl})`
+    : "the review feedback";
   return [
     `✅ **Addressed by Claude Code** (commit [\`${commitSha.substring(0, 7)}\`](${repoUrl}/commit/${commitSha}))`,
     "",
-    `> ${context.commentBody}`,
+    `Re: ${commentLink}`,
     "",
     `**What was done:** ${result.summary}`,
     "",

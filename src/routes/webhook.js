@@ -61,11 +61,35 @@ router.post("/webhook", verifySignature, (req, res) => {
   }
 
   // ── comment-style events ───────────────────────────────────────────────────
+  // issue_comment.edited gets a special pass: it's only accepted when the
+  // edited body explicitly opts in via the trigger phrase. This lets a user
+  // edit an old comment to add e.g. "Clauditor verify this" and ask the bot
+  // to re-evaluate the feedback.
   const expectedAction = ACTION_FOR_EVENT[event];
-  if (payload.action !== expectedAction) {
-    return res.status(200).json({
-      message: `Action '${payload.action}' ignored for event '${event}' (expected '${expectedAction}')`,
-    });
+  let accepted = payload.action === expectedAction;
+  let rejectionReason = `Action '${payload.action}' ignored for event '${event}' (expected '${expectedAction}')`;
+
+  if (
+    !accepted &&
+    event === "issue_comment" &&
+    payload.action === "edited" &&
+    config.triggerPhrase
+  ) {
+    const body = payload.comment?.body || "";
+    if (body.toLowerCase().includes(config.triggerPhrase.toLowerCase())) {
+      accepted = true;
+      logger.info(
+        `Re-verifying comment via trigger phrase: "${config.triggerPhrase}" ` +
+        `on PR #${payload.issue?.number}`
+      );
+    } else {
+      rejectionReason =
+        `issue_comment 'edited' without trigger phrase ('${config.triggerPhrase}') — ignored`;
+    }
+  }
+
+  if (!accepted) {
+    return res.status(200).json({ message: rejectionReason });
   }
 
   // issue_comment fires for both Issues and PRs; only PR-attached comments

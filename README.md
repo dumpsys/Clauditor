@@ -157,6 +157,15 @@ The comment handler (Workflow A) applies two important guards before doing any w
 
 Together these mean the bot is silent on the PR unless it has actually made a commit on your behalf.
 
+### Re-triggering on an existing comment
+
+If you've already posted feedback on a PR and then realize you'd like Clauditor to act on it, you don't need to delete and repost. **Edit the existing comment to include the trigger phrase** (default: `Clauditor verify this`, configurable via `CLAUDITOR_TRIGGER_PHRASE`).
+
+- Only `issue_comment.edited` events with the phrase trigger the workflow. Edits without the phrase are ignored.
+- The phrase itself is stripped before Claude sees the body, so it doesn't pollute the prompt or commit message.
+- All the usual guards still apply (PR-author scope, protected branches, etc.).
+- The bot's own replies use a different commenter, so editing them won't loop back into the workflow.
+
 ---
 
 ## Safety Features
@@ -185,6 +194,7 @@ Together these mean the bot is silent on the PR unless it has actually made a co
 | `GITHUB_WEBHOOK_SECRET` | ✅ | — | Webhook HMAC secret |
 | `GITHUB_BOT_USERNAME` | ✅ | — | Your GitHub username (for loop prevention) |
 | `GITHUB_REVIEW_REQUEST_USER` | | _empty_ | When this user is requested as a PR reviewer, the bot runs `/review` and posts a formal review. Empty disables the feature. |
+| `CLAUDITOR_TRIGGER_PHRASE` | | `Clauditor verify this` | Editing an existing issue_comment to include this phrase re-triggers the comment workflow on that comment. Case-insensitive. Empty disables `issue_comment.edited` handling. |
 | `PORT` | | `3000` | Local server port |
 | `PROTECTED_BRANCHES` | | `main,master,develop` | Branches bot won't push to |
 | `GIT_EMAIL` | | `pr-bot@localhost` | Git commit email |

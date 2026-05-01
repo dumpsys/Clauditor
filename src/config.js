@@ -15,6 +15,10 @@ export const config = {
   // Username (e.g. "dumpsys") that, when requested as a reviewer, triggers
   // an automated /review run. Empty/unset disables the feature.
   reviewRequestUser: process.env.GITHUB_REVIEW_REQUEST_USER || "",
+  // Phrase that opts an existing PR comment into re-verification when the
+  // author edits the comment to include it. Case-insensitive match.
+  // Empty disables the issue_comment.edited workflow.
+  triggerPhrase: (process.env.CLAUDITOR_TRIGGER_PHRASE ?? "Clauditor verify this").trim(),
   protectedBranches: (process.env.PROTECTED_BRANCHES || "main,master,develop")
     .split(",")
     .map((b) => b.trim())

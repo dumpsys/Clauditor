@@ -27,3 +27,9 @@ yarn-error.log*
 coverage/
 dist/
 build/
+
+# Lock files (does not match package-lock.json, which is .json — safe to keep)
+*.lock
+
+# Personal notes / submissions
+AIIC*.md
