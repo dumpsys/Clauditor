@@ -1,4 +1,5 @@
 import { spawn } from "child_process";
+import os from "os";
 import { config } from "../config.js";
 import { logger } from "../logger.js";
 
@@ -26,6 +27,36 @@ export async function runClaudeCode(workDir, context) {
 
   const output = await spawnClaude(args, prompt, workDir, config.claudeTimeoutMs);
   return parseClaudeOutput(output);
+}
+
+/**
+ * Cheap pre-flight triage: ask Claude (no tools, no clone) whether the
+ * comment plausibly requires a code change. Returns { skip, reason }.
+ *
+ * We bias toward `skip: false` — when in doubt, proceed to the full flow.
+ * Used to short-circuit the expensive clone + tool-using run for
+ * obviously-non-actionable feedback (praise, questions, lgtm, etc.).
+ */
+export async function runClaudeTriage(context) {
+  const prompt = buildTriagePrompt(context);
+
+  const args = [
+    "-p",
+    "--output-format", "json",
+    // No tools — model judgment only. Can't read files, run commands, etc.
+    "--allowedTools", "",
+    // Single turn is enough; no tool loop needed.
+    "--max-turns", "1",
+  ];
+
+  logger.info(
+    `Triaging comment on PR #${context.prNumber}: "${(context.commentBody || "").substring(0, 60)}..."`
+  );
+
+  // No workdir needed — the call doesn't touch the repo. Use os.tmpdir()
+  // as a safe cwd. Tight 60s timeout — single-turn no-tool calls return fast.
+  const output = await spawnClaude(args, prompt, os.tmpdir(), 60_000);
+  return parseTriageOutput(output);
 }
 
 /**
@@ -63,6 +94,76 @@ function extractReviewText(rawOutput) {
     // Not JSON — fall through and return raw.
   }
   return rawOutput;
+}
+
+function buildTriagePrompt(context) {
+  const fileLine = context.filePath ? `**File:** \`${context.filePath}\`` : "";
+  const diffBlock = context.diffHunk
+    ? `**Diff hunk:**\n\`\`\`diff\n${context.diffHunk}\n\`\`\``
+    : "";
+
+  return `
+You are triaging a code review comment. You have NO access to the codebase. Make a single fast judgment from the comment text and (if provided) the diff hunk.
+
+**PR title:** ${context.prTitle}
+${fileLine}
+
+**Comment from @${context.commenter}:**
+${context.commentBody}
+
+${diffBlock}
+
+**Question:** Could this comment plausibly require a code change?
+
+Mark \`skip: true\` ONLY if the comment is OBVIOUSLY not a request for code changes, such as:
+- Pure praise / approval ("lgtm", "nice work", "looks good")
+- Pure questions seeking explanation, with no implied change
+- Pure discussion / opinion that doesn't request anything
+- Comments about CI failures, deployment, process — things outside the code itself
+
+Mark \`skip: false\` for ANYTHING that might warrant a fix:
+- Suggestions to rename, refactor, fix bugs, add tests, simplify, etc.
+- Pointing out unclear logic, errors, edge cases
+- Specific feedback on the code in the diff hunk
+- Anything ambiguous — when in doubt, do NOT skip
+
+Output ONLY this JSON object as the very last thing you write:
+
+\`\`\`json
+{
+  "skip": false,
+  "reason": "one short sentence"
+}
+\`\`\`
+`.trim();
+}
+
+function parseTriageOutput(rawOutput) {
+  let text = rawOutput;
+  try {
+    const outer = JSON.parse(rawOutput);
+    if (outer.result) text = outer.result;
+  } catch { /* not outer JSON, fall through */ }
+
+  const fenced = text.match(/```json\s*([\s\S]*?)\s*```/);
+  if (fenced) {
+    try {
+      const parsed = JSON.parse(fenced[1]);
+      if (typeof parsed.skip === "boolean") return parsed;
+    } catch { /* fall through */ }
+  }
+
+  const inline = text.match(/\{[\s\S]*"skip"[\s\S]*?\}/);
+  if (inline) {
+    try {
+      const parsed = JSON.parse(inline[0]);
+      if (typeof parsed.skip === "boolean") return parsed;
+    } catch { /* fall through */ }
+  }
+
+  // Unparseable — proceed conservatively rather than dropping the job.
+  logger.warn(`Triage output not parseable; proceeding with full flow. Output: ${text.substring(0, 300)}`);
+  return { skip: false, reason: "triage output not parseable; defaulted to proceed" };
 }
 
 function buildPrompt(context) {

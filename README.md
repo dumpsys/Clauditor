@@ -26,16 +26,21 @@ Webhook → Queue → handlers/comment.js
         ▼
 Guard: PR author == GITHUB_BOT_USERNAME ?
         │
-        ├── no  → log + return (no clone, no Claude run, no reply)
+        ├── no  → log + return (no triage, no clone, no Claude run, no reply)
         │
         └── yes ↓
-                Clone PR branch (shallow)
+                Triage: claude -p (no tools, max-turns 1) → { skip, reason }
                         │
-                        ▼
-                claude -p (custom prompt) → { actionable, summary, reason }
+                        ├── skip → log + return (no clone — saved expensive work)
                         │
-                        ├── actionable     → Edit files → commit + push → reply ✅
-                        └── not actionable → log + return (silent on the PR)
+                        └── proceed ↓
+                                Clone PR branch (shallow)
+                                        │
+                                        ▼
+                                claude -p (full prompt) → { actionable, summary, reason }
+                                        │
+                                        ├── actionable     → Edit files → commit + push → reply ✅
+                                        └── not actionable → log + return (silent on the PR)
 ```
 
 ### B. Review-request workflow
@@ -150,12 +155,13 @@ Notes:
 
 ### Comment-handler scoping rules
 
-The comment handler (Workflow A) applies two important guards before doing any work:
+The comment handler (Workflow A) applies three guards, each cheaper than the next, before running the heavyweight flow:
 
-1. **PR-author scope** — the bot only acts on PRs **authored by `GITHUB_BOT_USERNAME`**. Comments on someone else's PR are logged and skipped (no clone, no Claude run, no commit, no reply). This prevents the bot from pushing commits to branches you don't own.
-2. **Silent on non-actionable feedback** — when Claude decides the comment is vague, subjective, already-handled, or simply not a request for a change, the bot logs the reason locally and posts **nothing** on the PR. Only successful fixes generate a reply on GitHub.
+1. **PR-author scope** — the bot only acts on PRs **authored by `GITHUB_BOT_USERNAME`**. Comments on someone else's PR are logged and skipped (no clone, no triage, no Claude run, no reply). This prevents the bot from pushing commits to branches you don't own.
+2. **Cheap triage pass** — before cloning anything, the handler asks Claude (no tools, single turn) whether the comment plausibly requires a code change. Pure praise, lgtm, questions, discussion, CI complaints — all skipped without ever cloning the repo. The triage is biased toward "proceed" when in doubt: the full flow is the second-line filter.
+3. **Silent on non-actionable feedback** — even after triage proceeds, the full Claude run can still decide the change isn't warranted (e.g., once it sees the code, the request is already implemented). In that case the bot logs the reason locally and posts **nothing** on the PR. Only successful fixes generate a reply.
 
-Together these mean the bot is silent on the PR unless it has actually made a commit on your behalf.
+Together these mean the bot is silent on the PR unless it has actually made a commit on your behalf, and the expensive clone+Claude path runs only when the comment has at least a plausible chance of being actionable.
 
 ### Re-triggering on an existing comment
 

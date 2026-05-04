@@ -1,7 +1,7 @@
 import path from "path";
 import fs from "fs";
 import os from "os";
-import { runClaudeCode } from "../services/claude.js";
+import { runClaudeCode, runClaudeTriage } from "../services/claude.js";
 import { replyToComment, replyToReview, getPullRequest } from "../services/github.js";
 import { gitOperations } from "../services/git.js";
 import { config } from "../config.js";
@@ -91,6 +91,23 @@ export async function handleComment(job) {
   logger.info(
     `Handling ${context.event} on PR #${context.prNumber}: "${context.commentBody.substring(0, 80)}..."`
   );
+
+  // Cheap triage first — avoid cloning the repo for obviously-non-actionable
+  // feedback (praise, questions, lgtm, etc.). On any error we proceed to the
+  // full flow rather than silently dropping the job.
+  let triage;
+  try {
+    triage = await runClaudeTriage(context);
+  } catch (err) {
+    logger.warn(`Triage failed (${err.message}); proceeding to full flow`);
+    triage = { skip: false, reason: "triage error — defaulted to proceed" };
+  }
+
+  if (triage.skip) {
+    logger.info(`Skipping (triage): ${triage.reason}`);
+    return;
+  }
+  logger.info(`Triage: proceed (${triage.reason})`);
 
   const workDir = fs.mkdtempSync(path.join(os.tmpdir(), `clauditor-${context.prNumber}-`));
 
