@@ -131,7 +131,7 @@ export async function handleComment(job) {
     const commitSha = await gitOperations.commitAndPush(
       workDir,
       context.branch,
-      `fix: address review feedback from @${context.commenter}\n\n${context.commentBody.substring(0, 200)}`
+      buildCommitMessage(context, result)
     );
 
     await postReply(context, buildSuccessReply(context, result, commitSha));
@@ -149,6 +149,20 @@ async function postReply(context, body) {
   } else {
     await replyToReview(context.owner, context.repoName, context.prNumber, body);
   }
+}
+
+/**
+ * Compose a commit message that describes WHAT changed (from Claude's
+ * `result.summary`) rather than quoting the reviewer's feedback. The link
+ * to the original comment goes in a trailer so the change is still traceable.
+ */
+function buildCommitMessage(context, result) {
+  const summary = (result.summary || "address review feedback").trim();
+  const trailer = [
+    `Resolves review feedback from @${context.commenter}.`,
+    context.commentUrl ? `Comment: ${context.commentUrl}` : null,
+  ].filter(Boolean).join("\n");
+  return `${summary}\n\n${trailer}`;
 }
 
 function buildSuccessReply(context, result, commitSha) {

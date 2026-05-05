@@ -230,7 +230,7 @@ Output ONLY one of these JSON objects as the last thing you write:
 \`\`\`json
 {
   "actionable": true,
-  "summary": "What was changed and why. Include a one-line note about test verification (e.g., 'Tests: 142 passed via npm test' or 'Tests: skipped — no test runner detected').",
+  "summary": "Commit-message-style description of WHAT was changed and WHY. The first line MUST be ≤72 chars, written in imperative mood (e.g. 'Validate gradleTask against allowlist before exec'), with no trailing period. Optionally add a blank line and a short body. Do NOT quote the reviewer's words. End with a one-line test note (e.g. 'Tests: 142 passed via npm test' or 'Tests: skipped — no test runner detected').",
   "files_modified": ["path/to/file.js"],
   "tests_run": true,
   "tests_passed": true,
