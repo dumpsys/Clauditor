@@ -23,7 +23,14 @@ export const config = {
     .split(",")
     .map((b) => b.trim())
     .filter(Boolean),
-  gitEmail: process.env.GIT_EMAIL || "pr-bot@localhost",
+  // GitHub user's numeric ID. When set, commits are authored with the
+  // GitHub no-reply email (`<id>+<username>@users.noreply.github.com`) so
+  // pushes aren't rejected by GitHub's email-privacy protection (GH007).
+  // Find it at https://api.github.com/users/<username> ("id" field).
+  githubNoreplyUserId: (process.env.GITHUB_NOREPLY_USER_ID || "").trim(),
+  gitEmail: process.env.GITHUB_NOREPLY_USER_ID?.trim()
+    ? `${process.env.GITHUB_NOREPLY_USER_ID.trim()}+${process.env.GITHUB_BOT_USERNAME}@users.noreply.github.com`
+    : process.env.GIT_EMAIL || "pr-bot@localhost",
   gitName: process.env.GIT_NAME || "PR Review Bot",
   // Default 5 min — for the comment handler, which makes one targeted edit.
   claudeTimeoutMs: parseInt(process.env.CLAUDE_TIMEOUT_MS || "300000", 10),

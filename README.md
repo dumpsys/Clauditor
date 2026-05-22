@@ -203,8 +203,9 @@ If you've already posted feedback on a PR and then realize you'd like Clauditor 
 | `CLAUDITOR_TRIGGER_PHRASE` | | `Clauditor verify this` | Editing an existing issue_comment to include this phrase re-triggers the comment workflow on that comment. Case-insensitive. Empty disables `issue_comment.edited` handling. |
 | `PORT` | | `3000` | Local server port |
 | `PROTECTED_BRANCHES` | | `main,master,develop` | Branches bot won't push to |
-| `GIT_EMAIL` | | `pr-bot@localhost` | Git commit email |
+| `GIT_EMAIL` | | `pr-bot@localhost` | Git commit email (ignored when `GITHUB_NOREPLY_USER_ID` is set) |
 | `GIT_NAME` | | `PR Review Bot` | Git commit name |
+| `GITHUB_NOREPLY_USER_ID` | | — | Bot account's numeric GitHub user ID. When set, commits use the GitHub no-reply email (`<id>+<username>@users.noreply.github.com`) — required if the account keeps its email private, otherwise pushes fail with `GH007` |
 | `CLAUDE_TIMEOUT_MS` | | `300000` | Max time for the comment handler's Claude run (ms) |
 | `CLAUDE_REVIEW_TIMEOUT_MS` | | `4 × CLAUDE_TIMEOUT_MS` | Max time for `/review` jobs — reviews are heavier than comment fixes (ms) |
 | `LOG_LEVEL` | | `info` | `debug` / `info` / `warn` / `error` |
