@@ -20,7 +20,9 @@ Sentry issue alert (new / regression)
 POST /sentry-webhook  →  verifySentrySignature
         │
         ▼
-Filter: action ∈ {created, regression}
+Filter: resource = "issue" AND action = "created"
+        │   (Sentry delivers regressions as action: "created" too — both
+        │    new issues and regressions arrive through this single branch)
         │   project.slug → owner/repo (env-mapped, drop if unmapped)
         │   issue.count  ≥ SENTRY_MIN_EVENT_COUNT
         │   issue not currently in-flight (dedup)

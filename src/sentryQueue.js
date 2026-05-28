@@ -22,15 +22,24 @@ import { logger } from "./logger.js";
  */
 class SentryQueue {
   constructor(maxConcurrent) {
-    this._maxConcurrent = Math.max(1, maxConcurrent);
+    // Guard against non-numeric env values (Math.max(1, NaN) === NaN, which
+    // would make the < comparison in _drain() permanently false and freeze
+    // the queue). Fall back to 1 worker rather than silently breaking.
+    const n = Number(maxConcurrent);
+    this._maxConcurrent = Number.isFinite(n) && n >= 1 ? Math.floor(n) : 1;
     this._pending = [];      // jobs waiting for a worker slot
     this._inFlight = new Map(); // issueId → Promise (currently running)
+    // Pending issue IDs — needed so duplicates that arrive while the pool is
+    // saturated also coalesce (a job sitting in `_pending` isn't yet in
+    // `_inFlight`). Cleared at the moment the job moves into `_inFlight`.
+    this._pendingIds = new Set();
   }
 
   /**
    * @returns {"queued"|"in-flight"} the disposition of this enqueue attempt.
-   * "in-flight" means a job for this issueId is already running and the
-   * incoming webhook is being dropped as a duplicate.
+   * "in-flight" means a job for this issueId is already either running OR
+   * waiting in the pending queue, and the incoming webhook is dropped as
+   * a duplicate.
    */
   add(job) {
     const issueId = job.issueId;
@@ -39,11 +48,12 @@ class SentryQueue {
       logger.warn("Sentry job missing issueId; dropping");
       return "in-flight";
     }
-    if (this._inFlight.has(issueId)) {
-      logger.info(`Sentry issue ${issueId} already in-flight — dropping duplicate webhook`);
+    if (this._inFlight.has(issueId) || this._pendingIds.has(issueId)) {
+      logger.info(`Sentry issue ${issueId} already queued/in-flight — dropping duplicate webhook`);
       return "in-flight";
     }
     this._pending.push(job);
+    this._pendingIds.add(issueId);
     this._drain();
     return "queued";
   }
@@ -58,13 +68,7 @@ class SentryQueue {
     while (this._pending.length > 0 && this._inFlight.size < this._maxConcurrent) {
       const job = this._pending.shift();
       const issueId = job.issueId;
-      // Re-check just in case a duplicate snuck into _pending before _drain
-      // got around to running. With the current `add()` flow this can't
-      // happen, but defensive: cheap.
-      if (this._inFlight.has(issueId)) {
-        logger.warn(`Skipping pending duplicate for issue ${issueId}`);
-        continue;
-      }
+      this._pendingIds.delete(issueId);
       const promise = this._run(job).finally(() => {
         this._inFlight.delete(issueId);
         // Another job may now fit. Drain again. Use setImmediate so we don't

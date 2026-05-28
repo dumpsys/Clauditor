@@ -86,7 +86,12 @@ export const config = {
     baseBranch: process.env.SENTRY_BASE_BRANCH || "main",
     branchPrefix: process.env.SENTRY_BRANCH_PREFIX || "sentry-fix/",
     minEventCount: parseInt(process.env.SENTRY_MIN_EVENT_COUNT || "1", 10),
-    maxConcurrentJobs: parseInt(process.env.SENTRY_MAX_CONCURRENT_JOBS || "2", 10),
+    maxConcurrentJobs: (() => {
+      const n = parseInt(process.env.SENTRY_MAX_CONCURRENT_JOBS || "2", 10);
+      // Reject NaN / non-positive values up-front instead of letting them
+      // propagate into the queue and freeze it.
+      return Number.isFinite(n) && n >= 1 ? n : 2;
+    })(),
     // Sentry fixes can take longer than comment fixes — there's more
     // exploration (find the file, understand the error, reproduce). Default
     // 10 min, separate knob so it doesn't have to track CLAUDE_TIMEOUT_MS.
