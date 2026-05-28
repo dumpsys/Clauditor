@@ -27,8 +27,11 @@ export function validateConfig() {
  * Parse "slug-a:owner/repo-a,slug-b:owner/repo-b" into a Map.
  * Empty / malformed entries are silently dropped (validation happens at
  * use-site so a typo in one entry doesn't break startup for the others).
+ *
+ * Exported for unit testing — most call sites should just read
+ * `config.sentry.projectRepoMap` directly.
  */
-function parseProjectRepoMap(raw) {
+export function parseProjectRepoMap(raw) {
   const map = new Map();
   if (!raw) return map;
   for (const entry of raw.split(",")) {

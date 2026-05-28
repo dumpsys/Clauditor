@@ -20,13 +20,20 @@ import { logger } from "./logger.js";
  *   - After a job completes (success or failure), its issueId leaves the
  *     in-flight Map. The next webhook for that issue will be accepted.
  */
-class SentryQueue {
-  constructor(maxConcurrent) {
+export class SentryQueue {
+  /**
+   * @param {number} maxConcurrent
+   * @param {(job: any) => Promise<void>} [handler] — defaults to the real
+   *   Sentry issue handler. Tests inject a controllable async function so
+   *   they can observe in-flight state without doing real work.
+   */
+  constructor(maxConcurrent, handler = handleSentryIssue) {
     // Guard against non-numeric env values (Math.max(1, NaN) === NaN, which
     // would make the < comparison in _drain() permanently false and freeze
     // the queue). Fall back to 1 worker rather than silently breaking.
     const n = Number(maxConcurrent);
     this._maxConcurrent = Number.isFinite(n) && n >= 1 ? Math.floor(n) : 1;
+    this._handler = handler;
     this._pending = [];      // jobs waiting for a worker slot
     this._inFlight = new Map(); // issueId → Promise (currently running)
     // Pending issue IDs — needed so duplicates that arrive while the pool is
@@ -82,7 +89,7 @@ class SentryQueue {
   async _run(job) {
     logger.info(`Sentry job start: issue ${job.issueId} (active=${this._inFlight.size + 1}/${this._maxConcurrent})`);
     try {
-      await handleSentryIssue(job);
+      await this._handler(job);
       logger.info(`Sentry job done: issue ${job.issueId}`);
     } catch (err) {
       logger.error(`Sentry job failed for issue ${job.issueId}: ${err.message}`, { stack: err.stack });
