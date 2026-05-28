@@ -24,6 +24,22 @@ export function validateConfig() {
 }
 
 /**
+ * Read a positive integer from process.env with a safe fallback.
+ *
+ * Why this exists: `parseInt("abc", 10)` returns `NaN`, and a `NaN` value
+ * silently breaks every downstream comparison (`x < NaN` is always false)
+ * and `setTimeout(fn, NaN)` fires near-immediately. We've now been bitten
+ * by this in three places (concurrency, event-count gate, Claude timeout),
+ * so centralize the guard here.
+ */
+export function parsePositiveIntEnv(name, fallback) {
+  const raw = process.env[name];
+  if (raw === undefined || raw === "") return fallback;
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) && n >= 1 ? n : fallback;
+}
+
+/**
  * Parse "slug-a:owner/repo-a,slug-b:owner/repo-b" into a Map.
  * Empty / malformed entries are silently dropped (validation happens at
  * use-site so a typo in one entry doesn't break startup for the others).
@@ -88,17 +104,15 @@ export const config = {
     projectRepoMap: parseProjectRepoMap(process.env.SENTRY_PROJECT_REPO_MAP),
     baseBranch: process.env.SENTRY_BASE_BRANCH || "main",
     branchPrefix: process.env.SENTRY_BRANCH_PREFIX || "sentry-fix/",
-    minEventCount: parseInt(process.env.SENTRY_MIN_EVENT_COUNT || "1", 10),
-    maxConcurrentJobs: (() => {
-      const n = parseInt(process.env.SENTRY_MAX_CONCURRENT_JOBS || "2", 10);
-      // Reject NaN / non-positive values up-front instead of letting them
-      // propagate into the queue and freeze it.
-      return Number.isFinite(n) && n >= 1 ? n : 2;
-    })(),
+    // All three of these go through parsePositiveIntEnv so a typo'd env
+    // value falls back to the default instead of breaking the count gate,
+    // freezing the queue, or making `setTimeout(fn, NaN)` time out instantly.
+    minEventCount: parsePositiveIntEnv("SENTRY_MIN_EVENT_COUNT", 1),
+    maxConcurrentJobs: parsePositiveIntEnv("SENTRY_MAX_CONCURRENT_JOBS", 2),
     // Sentry fixes can take longer than comment fixes — there's more
     // exploration (find the file, understand the error, reproduce). Default
     // 10 min, separate knob so it doesn't have to track CLAUDE_TIMEOUT_MS.
-    claudeTimeoutMs: parseInt(process.env.SENTRY_CLAUDE_TIMEOUT_MS || "600000", 10),
+    claudeTimeoutMs: parsePositiveIntEnv("SENTRY_CLAUDE_TIMEOUT_MS", 600000),
   },
 };
 

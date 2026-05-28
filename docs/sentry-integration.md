@@ -103,12 +103,21 @@ explaining why no PR was created.
 
 ## Sentry comments
 
-The bot posts back on the Sentry issue in **all three** outcomes:
+The bot posts back on the Sentry issue in the three outcomes the handler
+reaches:
 
 1. ✅ Success — PR link, commit SHA, confidence level
 2. ⚠️ Investigated, no fix — Claude's reason (e.g. "root cause is in a
    third-party library; not actionable from this repo")
-3. ⏭ Skipped — pre-flight failure (no source maps, project not mapped, etc.)
+3. ⏭ Skipped at the source-map gate — when top-frame source maps aren't
+   resolved and Claude can't locate the code
+
+**Not** posted back: route-layer rejections (invalid HMAC, unmapped
+project slug, issue count below threshold, duplicate webhook coalesced
+by the in-flight Map). Those return a 200 response and stay silent on
+the Sentry issue — they happen before the handler runs, often before
+the bot has any business commenting on the issue at all (e.g. an
+unmapped project may belong to a different team).
 
 ## Env vars
 

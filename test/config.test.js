@@ -8,7 +8,7 @@ process.env.GITHUB_TOKEN ??= "test-token";
 process.env.GITHUB_WEBHOOK_SECRET ??= "test-secret";
 process.env.GITHUB_BOT_USERNAME ??= "test-bot";
 
-const { parseProjectRepoMap, validateConfig } = await import("../src/config.js");
+const { parseProjectRepoMap, parsePositiveIntEnv, validateConfig } = await import("../src/config.js");
 
 describe("parseProjectRepoMap", () => {
   test("returns empty Map for empty / undefined input", () => {
@@ -51,6 +51,49 @@ describe("parseProjectRepoMap", () => {
     const m = parseProjectRepoMap(",a:o/r,");
     assert.equal(m.size, 1);
     assert.ok(m.has("a"));
+  });
+});
+
+describe("parsePositiveIntEnv", () => {
+  const KEY = "__TEST_PARSE_POS_INT__";
+  let saved;
+  beforeEach(() => { saved = process.env[KEY]; });
+  afterEach(() => {
+    if (saved === undefined) delete process.env[KEY];
+    else process.env[KEY] = saved;
+  });
+
+  test("returns the parsed value when the env var is a positive integer", () => {
+    process.env[KEY] = "42";
+    assert.equal(parsePositiveIntEnv(KEY, 1), 42);
+  });
+
+  test("returns the fallback when the env var is unset", () => {
+    delete process.env[KEY];
+    assert.equal(parsePositiveIntEnv(KEY, 99), 99);
+  });
+
+  test("returns the fallback when the env var is an empty string", () => {
+    process.env[KEY] = "";
+    assert.equal(parsePositiveIntEnv(KEY, 99), 99);
+  });
+
+  test("returns the fallback on a non-numeric value (this is the NaN guard)", () => {
+    process.env[KEY] = "abc";
+    assert.equal(parsePositiveIntEnv(KEY, 7), 7);
+  });
+
+  test("returns the fallback on zero / negative integers", () => {
+    process.env[KEY] = "0";
+    assert.equal(parsePositiveIntEnv(KEY, 7), 7);
+    process.env[KEY] = "-5";
+    assert.equal(parsePositiveIntEnv(KEY, 7), 7);
+  });
+
+  test("accepts integers embedded in strings (parseInt semantics)", () => {
+    // parseInt("3abc", 10) === 3 — confirm the helper inherits that.
+    process.env[KEY] = "3abc";
+    assert.equal(parsePositiveIntEnv(KEY, 1), 3);
   });
 });
 
