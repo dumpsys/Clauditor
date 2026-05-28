@@ -9,6 +9,7 @@
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
     "test": "node --test",
+    "test:coverage": "node --experimental-test-coverage --test",
     "test:webhook": "node scripts/test-webhook.js"
   },
   "engines": {

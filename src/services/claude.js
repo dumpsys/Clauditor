@@ -538,3 +538,17 @@ function parseClaudeOutput(rawOutput) {
   logger.error(`Claude output did not contain a parseable decision:\n${text}`);
   throw new Error("Could not extract actionable decision from Claude output");
 }
+
+// ─── Internals exposed for unit testing ──────────────────────────────────
+// Not part of the public service API — production callers go through the
+// `runClaude*` functions above. Tests import these directly so the pure
+// parsers and prompt builders can be exercised without spawning the CLI.
+export {
+  buildPrompt,
+  buildTriagePrompt,
+  buildSentryPrompt,
+  parseClaudeOutput,
+  parseTriageOutput,
+  parseSentryOutput,
+  extractReviewText,
+};

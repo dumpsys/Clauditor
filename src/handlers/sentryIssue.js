@@ -194,3 +194,6 @@ async function safeSentryComment(issueId, text) {
     logger.warn(`Could not post Sentry comment on issue ${issueId}: ${err.message}`);
   }
 }
+
+// Exposed for unit testing — pure string-building helpers with no I/O.
+export { buildPRTitle, buildPRBody, buildCommitMessage };

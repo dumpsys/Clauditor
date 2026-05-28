@@ -1,15 +1,20 @@
-import { test, describe } from "node:test";
+import { test, describe, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 
 process.env.GITHUB_TOKEN ??= "test-token";
 process.env.GITHUB_WEBHOOK_SECRET ??= "test-secret";
 process.env.GITHUB_BOT_USERNAME ??= "test-bot";
+process.env.SENTRY_AUTH_TOKEN = "sentry-tok";
+process.env.SENTRY_API_BASE_URL = "https://sentry.test/api/0";
 
 const {
   topInAppFrame,
   hasResolvedSourceMaps,
   summarizeEvent,
   issueIdFromPayload,
+  getIssue,
+  getLatestEvent,
+  postIssueComment,
 } = await import("../../src/services/sentry.js");
 
 /** Build a minimal Sentry-style event with a single exception value. */
@@ -183,6 +188,61 @@ describe("summarizeEvent", () => {
     const summary = summarizeEvent(event, {});
     assert.equal(summary.breadcrumbs.length, 5);
     assert.equal(summary.breadcrumbs.at(-1).message, "crumb-7");
+  });
+});
+
+describe("Sentry HTTP client", () => {
+  let originalFetch;
+  let calls;
+  let respondWith;
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+    calls = [];
+    respondWith = { status: 200, body: {} };
+    globalThis.fetch = async (url, options = {}) => {
+      calls.push({ url, options });
+      const r = respondWith;
+      return {
+        ok: r.status >= 200 && r.status < 300,
+        status: r.status,
+        statusText: r.statusText || "OK",
+        json: async () => r.body,
+        text: async () => typeof r.body === "string" ? r.body : JSON.stringify(r.body),
+      };
+    };
+  });
+  afterEach(() => { globalThis.fetch = originalFetch; });
+
+  test("getIssue hits /issues/{id}/ with the auth token", async () => {
+    respondWith = { status: 200, body: { id: "111", title: "Boom" } };
+    const issue = await getIssue("111");
+    assert.equal(calls[0].url, "https://sentry.test/api/0/issues/111/");
+    assert.equal(calls[0].options.headers.Authorization, "Bearer sentry-tok");
+    assert.equal(issue.id, "111");
+  });
+
+  test("getLatestEvent hits /issues/{id}/events/latest/", async () => {
+    respondWith = { status: 200, body: { eventID: "abc" } };
+    const ev = await getLatestEvent("222");
+    assert.equal(calls[0].url, "https://sentry.test/api/0/issues/222/events/latest/");
+    assert.equal(ev.eventID, "abc");
+  });
+
+  test("postIssueComment POSTs { text } to /issues/{id}/comments/", async () => {
+    respondWith = { status: 201, body: { id: 1 } };
+    await postIssueComment("333", "hello sentry");
+    assert.equal(calls[0].url, "https://sentry.test/api/0/issues/333/comments/");
+    assert.equal(calls[0].options.method, "POST");
+    assert.deepEqual(JSON.parse(calls[0].options.body), { text: "hello sentry" });
+  });
+
+  test("throws a descriptive error on non-2xx", async () => {
+    respondWith = { status: 403, statusText: "Forbidden", body: "missing scope" };
+    await assert.rejects(
+      () => getIssue("444"),
+      /Sentry API error 403 Forbidden: missing scope/,
+    );
   });
 });
 
