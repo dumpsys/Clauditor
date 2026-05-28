@@ -219,12 +219,16 @@ Claude evaluates each comment and returns a structured JSON decision:
 
 **Actionable** → Claude modifies the code, commits, pushes, and replies:
 ```
-✅ Addressed by Claude Code (commit `a1b2c3d`)
+✅ **Addressed by Claude Code** (commit [`a1b2c3d`](…/commit/a1b2c3d…))
 
-> Your variable names are unclear, use `userCount` instead of `n`
+Re: [original comment](…)
 
-What was done: Renamed variable `n` to `userCount` in auth.js lines 42-67
+**What was done:** Renamed variable `n` to `userCount` in auth.js lines 42-67
+
+_This change was applied automatically. Please review the commit to confirm it meets your expectations._
 ```
+
+The reviewer's feedback is linked (not inline-quoted) to keep the reply compact, and the commit message describes what changed rather than echoing the comment.
 
 **Not actionable** → the bot stays silent on the PR. The reason is logged locally for debugging, but no comment is posted (this avoids noise on threads where Claude has nothing useful to add).
 
@@ -297,3 +301,9 @@ LOG_LEVEL=debug node src/server.js
 npm run test:webhook
 # or: node scripts/test-webhook.js
 ```
+
+---
+
+## License
+
+Licensed under the [Apache License 2.0](./LICENSE).
