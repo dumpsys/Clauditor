@@ -203,10 +203,14 @@ describe("Sentry HTTP client", () => {
     globalThis.fetch = async (url, options = {}) => {
       calls.push({ url, options });
       const r = respondWith;
+      // Default Content-Type for happy-path tests is application/json so the
+      // new non-JSON guard in sentryFetch doesn't trip on legit responses.
+      const ct = r.contentType || "application/json";
       return {
         ok: r.status >= 200 && r.status < 300,
         status: r.status,
         statusText: r.statusText || "OK",
+        headers: { get: (h) => h.toLowerCase() === "content-type" ? ct : null },
         json: async () => r.body,
         text: async () => typeof r.body === "string" ? r.body : JSON.stringify(r.body),
       };
@@ -242,6 +246,32 @@ describe("Sentry HTTP client", () => {
     await assert.rejects(
       () => getIssue("444"),
       /Sentry API error 403 Forbidden: missing scope/,
+    );
+  });
+
+  test("throws an actionable error when a 2xx response is HTML, not JSON", async () => {
+    // Simulates SENTRY_API_BASE_URL pointing at https://sentry.io (no /api/0)
+    // or a self-hosted instance returning an SSO login page. We need a clearer
+    // error than `Unexpected token '<'` so operators can fix their config.
+    globalThis.fetch = async (url) => {
+      calls.push({ url });
+      return {
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        headers: { get: (h) => h.toLowerCase() === "content-type" ? "text/html; charset=utf-8" : null },
+        text: async () => "<!DOCTYPE html><html><body>Login</body></html>",
+        json: async () => { throw new Error("should not call .json() on HTML"); },
+      };
+    };
+    await assert.rejects(
+      () => getIssue("555"),
+      (err) => {
+        assert.match(err.message, /non-JSON response/);
+        assert.match(err.message, /text\/html/);
+        assert.match(err.message, /SENTRY_API_BASE_URL/);
+        return true;
+      },
     );
   });
 });

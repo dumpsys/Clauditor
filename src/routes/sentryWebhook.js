@@ -34,6 +34,19 @@ router.post("/sentry-webhook", verifySentrySignature, (req, res) => {
   const payload = req.body || {};
   const action = payload.action;
 
+  // Debug-only dump of headers + body so operators can see exactly what
+  // Sentry sent (run with LOG_LEVEL=debug). Truncated to 4 KB so one big
+  // webhook can't flood the log. Guard the stringify with an explicit
+  // level check so we don't pay the JSON.stringify cost on every webhook
+  // when debug isn't enabled.
+  if (config.logLevel === "debug") {
+    logger.debug(
+      `Sentry webhook received: resource="${resource}", action="${action}", ` +
+      `bodyBytes=${req.rawBody?.length ?? 0}`,
+    );
+    logger.debug(`Sentry webhook payload: ${truncate(safeJson(payload), 4000)}`);
+  }
+
   if (resource !== "issue") {
     return res
       .status(200)
@@ -109,5 +122,19 @@ router.post("/sentry-webhook", verifySentrySignature, (req, res) => {
     .status(202)
     .json({ message: "Accepted", queued: true, issueId: job.issueId });
 });
+
+/** JSON.stringify that never throws — circular / BigInt fallback. */
+function safeJson(value) {
+  try {
+    return JSON.stringify(value);
+  } catch (err) {
+    return `<unserializable: ${err.message}>`;
+  }
+}
+
+function truncate(s, n) {
+  if (typeof s !== "string") s = String(s);
+  return s.length <= n ? s : `${s.slice(0, n)}… (truncated, ${s.length - n} more chars)`;
+}
 
 export default router;

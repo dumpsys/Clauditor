@@ -10,13 +10,34 @@ function headers() {
 }
 
 async function sentryFetch(url, options = {}) {
+  logger.debug(`Sentry API request: ${options.method || "GET"} ${url}`);
   const res = await fetch(url, {
     ...options,
     headers: { ...headers(), ...options.headers },
   });
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`Sentry API error ${res.status} ${res.statusText}: ${body}`);
+    throw new Error(
+      `Sentry API error ${res.status} ${res.statusText}: ${body.slice(0, 500)}`,
+    );
+  }
+  // Sentry occasionally responds 2xx with an HTML body when something's wrong
+  // upstream — a misconfigured base URL (e.g. https://sentry.io instead of
+  // https://sentry.io/api/0) returns the marketing site; a self-hosted
+  // instance behind SSO can return a login page when auth is bad. Catch this
+  // BEFORE res.json() so the operator sees an actionable error instead of
+  // `Unexpected token '<', "<!DOCTYPE ..."`.
+  const contentType = res.headers.get("content-type") || "";
+  if (!contentType.toLowerCase().includes("application/json")) {
+    const body = await res.text();
+    const preview = body.slice(0, 200).replace(/\s+/g, " ").trim();
+    throw new Error(
+      `Sentry API returned non-JSON response (HTTP ${res.status}, Content-Type: "${contentType}") from ${url}. ` +
+      `First 200 chars: "${preview}". ` +
+      `Likely causes: SENTRY_API_BASE_URL is wrong (must end with /api/0), ` +
+      `SENTRY_AUTH_TOKEN is invalid/expired (self-hosted Sentry may redirect to an HTML login page), ` +
+      `or you're hitting a self-hosted instance behind SSO/a proxy.`,
+    );
   }
   return res.json();
 }
