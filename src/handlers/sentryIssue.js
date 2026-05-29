@@ -56,10 +56,10 @@ export async function handleSentryIssue(job) {
   try {
     if (existing) {
       logger.info(`Sentry ${issueId}: branch '${branchName}' exists — cloning it for incremental fix`);
-      gitOperations.clone(repoCloneUrl, workDir, branchName);
+      await gitOperations.clone(repoCloneUrl, workDir, branchName);
     } else {
       logger.info(`Sentry ${issueId}: creating new branch '${branchName}' off '${config.sentry.baseBranch}'`);
-      gitOperations.cloneAndCreateBranch(repoCloneUrl, workDir, config.sentry.baseBranch, branchName);
+      await gitOperations.cloneAndCreateBranch(repoCloneUrl, workDir, config.sentry.baseBranch, branchName);
     }
 
     const claudeContext = {
@@ -89,7 +89,7 @@ export async function handleSentryIssue(job) {
     }
 
     // Apply changes → commit → push.
-    const commitSha = gitOperations.commitAndPush(
+    const commitSha = await gitOperations.commitAndPush(
       workDir,
       branchName,
       buildCommitMessage(eventSummary, result, issueUrl),

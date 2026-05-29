@@ -1,4 +1,4 @@
-import { spawnSync } from "child_process";
+import { spawn } from "child_process";
 import { config } from "../config.js";
 import { logger } from "../logger.js";
 
@@ -16,10 +16,10 @@ export const gitOperations = {
   /**
    * Clone a repo and checkout a specific branch into workDir.
    */
-  clone(repoUrl, workDir, branch) {
+  async clone(repoUrl, workDir, branch) {
     logger.info(`Cloning branch '${branch}'...`);
 
-    run("git", [
+    await run("git", [
       ...authHeaderArgs(),
       "clone",
       "--depth", "1",
@@ -30,13 +30,13 @@ export const gitOperations = {
     ], { cwd: "/" });
 
     // Configure git identity for commits
-    run("git", ["config", "user.email", config.gitEmail], { cwd: workDir });
-    run("git", ["config", "user.name", config.gitName], { cwd: workDir });
+    await run("git", ["config", "user.email", config.gitEmail], { cwd: workDir });
+    await run("git", ["config", "user.name", config.gitName], { cwd: workDir });
 
     // Persist the auth header in this clone's local config so subsequent
     // pushes also authenticate without exposing the token in the URL.
     const basic = Buffer.from(`x-access-token:${config.githubToken}`).toString("base64");
-    run("git", ["config", "http.extraHeader", `Authorization: Basic ${basic}`], { cwd: workDir });
+    await run("git", ["config", "http.extraHeader", `Authorization: Basic ${basic}`], { cwd: workDir });
   },
 
   /**
@@ -44,10 +44,10 @@ export const gitOperations = {
    * `git diff origin/<base>...HEAD` locally during a review.
    * Checks out the head branch.
    */
-  cloneForReview(repoUrl, workDir, headBranch, baseBranch) {
+  async cloneForReview(repoUrl, workDir, headBranch, baseBranch) {
     logger.info(`Cloning '${headBranch}' (with base '${baseBranch}' available)...`);
 
-    run("git", [
+    await run("git", [
       ...authHeaderArgs(),
       "clone",
       "--branch", headBranch,
@@ -58,13 +58,13 @@ export const gitOperations = {
     // Make sure the base branch ref exists locally as `origin/<baseBranch>`.
     // A standard clone (without --single-branch) already fetches all remote
     // refs, but we run an explicit fetch in case the default behavior changed.
-    run("git", ["fetch", "origin", baseBranch], { cwd: workDir });
+    await run("git", ["fetch", "origin", baseBranch], { cwd: workDir });
 
-    run("git", ["config", "user.email", config.gitEmail], { cwd: workDir });
-    run("git", ["config", "user.name", config.gitName], { cwd: workDir });
+    await run("git", ["config", "user.email", config.gitEmail], { cwd: workDir });
+    await run("git", ["config", "user.name", config.gitName], { cwd: workDir });
 
     const basic = Buffer.from(`x-access-token:${config.githubToken}`).toString("base64");
-    run("git", ["config", "http.extraHeader", `Authorization: Basic ${basic}`], { cwd: workDir });
+    await run("git", ["config", "http.extraHeader", `Authorization: Basic ${basic}`], { cwd: workDir });
   },
 
   /**
@@ -72,10 +72,10 @@ export const gitOperations = {
    * Used by the Sentry handler when no existing fix branch is found.
    * The new branch is NOT pushed yet — that happens in commitAndPush.
    */
-  cloneAndCreateBranch(repoUrl, workDir, baseBranch, newBranch) {
+  async cloneAndCreateBranch(repoUrl, workDir, baseBranch, newBranch) {
     logger.info(`Cloning base '${baseBranch}' and creating '${newBranch}'...`);
 
-    run("git", [
+    await run("git", [
       ...authHeaderArgs(),
       "clone",
       "--depth", "1",
@@ -85,13 +85,13 @@ export const gitOperations = {
       workDir,
     ], { cwd: "/" });
 
-    run("git", ["checkout", "-b", newBranch], { cwd: workDir });
+    await run("git", ["checkout", "-b", newBranch], { cwd: workDir });
 
-    run("git", ["config", "user.email", config.gitEmail], { cwd: workDir });
-    run("git", ["config", "user.name", config.gitName], { cwd: workDir });
+    await run("git", ["config", "user.email", config.gitEmail], { cwd: workDir });
+    await run("git", ["config", "user.name", config.gitName], { cwd: workDir });
 
     const basic = Buffer.from(`x-access-token:${config.githubToken}`).toString("base64");
-    run("git", ["config", "http.extraHeader", `Authorization: Basic ${basic}`], { cwd: workDir });
+    await run("git", ["config", "http.extraHeader", `Authorization: Basic ${basic}`], { cwd: workDir });
   },
 
   /**
@@ -100,40 +100,62 @@ export const gitOperations = {
    * been made yet (e.g. we want the branch to exist before opening a PR).
    * Most callers won't need this; commitAndPush handles the common case.
    */
-  pushNewBranch(workDir, branch) {
-    run("git", ["push", "-u", "origin", branch], { cwd: workDir });
+  async pushNewBranch(workDir, branch) {
+    await run("git", ["push", "-u", "origin", branch], { cwd: workDir });
   },
 
   /**
    * Stage all changes, commit, and push. Returns the commit SHA.
    */
-  commitAndPush(workDir, branch, message) {
-    const status = runOutput("git", ["status", "--porcelain"], { cwd: workDir });
+  async commitAndPush(workDir, branch, message) {
+    const status = await runOutput("git", ["status", "--porcelain"], { cwd: workDir });
     if (!status.trim()) {
       throw new Error("Claude Code made no file changes despite marking feedback as actionable");
     }
 
     logger.info(`Files changed:\n${status}`);
 
-    run("git", ["add", "-A"], { cwd: workDir });
-    run("git", ["commit", "-m", message], { cwd: workDir });
-    run("git", ["push", "origin", branch], { cwd: workDir });
+    await run("git", ["add", "-A"], { cwd: workDir });
+    await run("git", ["commit", "-m", message], { cwd: workDir });
+    await run("git", ["push", "origin", branch], { cwd: workDir });
 
-    const sha = runOutput("git", ["rev-parse", "HEAD"], { cwd: workDir }).trim();
+    const sha = (await runOutput("git", ["rev-parse", "HEAD"], { cwd: workDir })).trim();
     logger.info(`Pushed commit ${sha} to ${branch}`);
     return sha;
   },
 };
 
+/**
+ * Run a subprocess to completion, returning { stdout, stderr } on success
+ * and rejecting with a descriptive Error on non-zero exit / spawn failure.
+ *
+ * IMPORTANT: this used to call `spawnSync`, which blocked the entire Node
+ * event loop for the duration of the subprocess. A `git clone` that took
+ * 30 s would stall every concurrent HTTP request (Sentry webhooks would
+ * pile up and time out — that's the exact bug this async port fixes).
+ * The async version lets the event loop keep handling requests while git
+ * is running.
+ */
 function run(cmd, args, opts = {}) {
-  const result = spawnSync(cmd, args, { ...opts, encoding: "utf-8" });
-  if (result.error) throw new Error(`${cmd} error: ${result.error.message}`);
-  if (result.status !== 0) {
-    throw new Error(`${cmd} ${args.join(" ")} failed (exit ${result.status}):\n${result.stderr}`);
-  }
-  return result;
+  return new Promise((resolve, reject) => {
+    const stdoutChunks = [];
+    const stderrChunks = [];
+    const proc = spawn(cmd, args, { ...opts, stdio: ["ignore", "pipe", "pipe"] });
+    proc.stdout.on("data", (c) => stdoutChunks.push(c));
+    proc.stderr.on("data", (c) => stderrChunks.push(c));
+    proc.on("error", (err) => reject(new Error(`${cmd} error: ${err.message}`)));
+    proc.on("close", (code) => {
+      const stdout = Buffer.concat(stdoutChunks).toString("utf-8");
+      const stderr = Buffer.concat(stderrChunks).toString("utf-8");
+      if (code !== 0) {
+        return reject(new Error(`${cmd} ${args.join(" ")} failed (exit ${code}):\n${stderr}`));
+      }
+      resolve({ stdout, stderr });
+    });
+  });
 }
 
-function runOutput(cmd, args, opts = {}) {
-  return run(cmd, args, opts).stdout;
+async function runOutput(cmd, args, opts = {}) {
+  const { stdout } = await run(cmd, args, opts);
+  return stdout;
 }
