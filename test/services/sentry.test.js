@@ -12,6 +12,7 @@ const {
   hasResolvedSourceMaps,
   summarizeEvent,
   issueIdFromPayload,
+  describeSourceMapGate,
   getIssue,
   getLatestEvent,
   postIssueComment,
@@ -243,6 +244,70 @@ describe("summarizeEvent", () => {
     const summary = summarizeEvent(event, {});
     assert.equal(summary.breadcrumbs.length, 5);
     assert.equal(summary.breadcrumbs.at(-1).message, "crumb-7");
+  });
+});
+
+describe("describeSourceMapGate (diagnostic string)", () => {
+  test("reports 'no exception entry' when the event has no exception", () => {
+    const desc = describeSourceMapGate({ entries: [{ type: "breadcrumbs", data: { values: [] } }] });
+    assert.match(desc, /no exception entry/);
+    assert.match(desc, /breadcrumbs/);
+  });
+
+  test("reports 'no in_app frame' when nothing is tagged in_app", () => {
+    const desc = describeSourceMapGate(eventWithFrames([
+      { in_app: false, filename: "vendor/lib.js" },
+      { in_app: false, filename: "node_modules/x.js" },
+    ]));
+    assert.match(desc, /no in_app frame/);
+    assert.match(desc, /0 in_app/);
+  });
+
+  test("reports REJECT with the matching pattern when filename is a known non-source", () => {
+    const desc = describeSourceMapGate(eventWithFrames([
+      { in_app: true, filename: "app:///InternalBytecode.js", lineno: 1 },
+    ]));
+    assert.match(desc, /REJECT/);
+    assert.match(desc, /InternalBytecode/);
+  });
+
+  test("reports REJECT when chosen frame has no context_line", () => {
+    const desc = describeSourceMapGate(eventWithFrames([
+      { in_app: true, filename: "src/A.ts", lineno: 10, function: "fn" },
+    ]));
+    assert.match(desc, /REJECT/);
+    assert.match(desc, /no context_line/);
+    assert.match(desc, /context_line=missing/);
+  });
+
+  test("reports ACCEPT and includes the chosen frame's filename + lineno", () => {
+    const good = {
+      in_app: true,
+      filename: "src/Profile.tsx",
+      function: "render",
+      lineno: 42,
+      context_line: "const name = user.name;",
+      pre_context: ["function render() {", "  // ..."],
+    };
+    const desc = describeSourceMapGate(eventWithFrames([good]));
+    assert.match(desc, /ACCEPT/);
+    assert.match(desc, /src\/Profile\.tsx:42/);
+    assert.match(desc, /context_line="const name = user\.name;"/);
+  });
+
+  test("event-stats summary lists totals for entries/values/frames/in_app/with-context", () => {
+    const ctxFrame = {
+      in_app: true, filename: "src/A.ts", lineno: 1,
+      context_line: "x", pre_context: ["a"],
+    };
+    const desc = describeSourceMapGate(eventWithFrames([
+      { in_app: false, filename: "vendor.js" },
+      ctxFrame,
+      { in_app: true, filename: "src/B.ts" }, // no context
+    ]));
+    assert.match(desc, /3 frame\(s\)/);
+    assert.match(desc, /2 in_app/);
+    assert.match(desc, /1 with context/);
   });
 });
 

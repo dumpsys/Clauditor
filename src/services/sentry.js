@@ -138,6 +138,50 @@ const NON_SOURCE_PATTERNS = [
 ];
 
 /**
+ * Diagnostic — explains in one line why `hasResolvedSourceMaps` would
+ * accept or reject this event. Use from operator-facing debug logs so
+ * "skipping: no resolved source context" can be turned into something
+ * actionable ("we picked frame X, it has filename Y, context_line is
+ * missing"). Pure function; safe to call at any log level.
+ */
+export function describeSourceMapGate(event) {
+  const exception = (event?.entries || []).find((e) => e.type === "exception");
+  const values = exception?.data?.values || [];
+  if (values.length === 0) {
+    return `no exception entry in event (entries=${(event?.entries || []).map((e) => e.type).join(",") || "none"})`;
+  }
+  const allFrames = values.flatMap((v) => v.stacktrace?.frames || []);
+  const inAppFrames = allFrames.filter((f) => f.in_app);
+  const withContext = inAppFrames.filter(frameHasContext);
+
+  const frame = topInAppFrame(event);
+  if (!frame) {
+    return (
+      `no in_app frame found ` +
+      `(${values.length} exception values, ${allFrames.length} total frames, 0 in_app)`
+    );
+  }
+
+  const filename = frame.filename || frame.abs_path || "(no filename)";
+  const matchedPattern = NON_SOURCE_PATTERNS.find((re) => re.test(filename));
+  const hasCtx = frameHasContext(frame);
+  const verdict = matchedPattern
+    ? `REJECT (filename matches non-source pattern ${matchedPattern})`
+    : !hasCtx
+      ? `REJECT (no context_line / pre_context on chosen frame)`
+      : `ACCEPT`;
+
+  return (
+    `chose frame ${filename}:${frame.lineno ?? "?"} ` +
+    `(fn=${frame.function || "?"}, in_app=${frame.in_app}, ` +
+    `context_line=${typeof frame.context_line === "string" ? `"${frame.context_line.slice(0, 60)}"` : "missing"}, ` +
+    `pre_context=${(frame.pre_context || []).length} lines) — ${verdict}. ` +
+    `Event stats: ${values.length} exception value(s), ${allFrames.length} frame(s), ` +
+    `${inAppFrames.length} in_app, ${withContext.length} with context.`
+  );
+}
+
+/**
  * Heuristic: did Sentry resolve source maps for a frame Claude can use?
  *
  * Returns true iff the frame chosen by `topInAppFrame` looks like real

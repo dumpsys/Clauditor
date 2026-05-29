@@ -17,6 +17,7 @@ import {
   postIssueComment as postSentryComment,
   hasResolvedSourceMaps,
   summarizeEvent,
+  describeSourceMapGate,
 } from "../services/sentry.js";
 
 /**
@@ -38,6 +39,14 @@ export async function handleSentryIssue(job) {
   // Source-map gate. Without resolved source positions, Claude is shooting
   // in the dark.
   if (!hasResolvedSourceMaps(event)) {
+    // Always log a one-line diagnostic of why we rejected — at info level so
+    // operators can paste it into an issue without enabling debug. The full
+    // event payload is only dumped at debug level (large + sensitive).
+    logger.info(`Sentry ${issueId} gate diagnostic: ${describeSourceMapGate(event)}`);
+    if (config.logLevel === "debug") {
+      logger.debug(`Sentry ${issueId} raw event JSON: ${truncate(safeJson(event), 6000)}`);
+    }
+
     const reason =
       "Top in-app frame has no resolved source context — upload source maps for this release to enable auto-fixes.";
     logger.info(`Sentry ${issueId}: skipping. ${reason}`);
@@ -193,6 +202,15 @@ async function safeSentryComment(issueId, text) {
     // Sentry auth token is missing a permission — the PR is still useful.
     logger.warn(`Could not post Sentry comment on issue ${issueId}: ${err.message}`);
   }
+}
+
+function safeJson(value) {
+  try { return JSON.stringify(value); } catch (err) { return `<unserializable: ${err.message}>`; }
+}
+
+function truncate(s, n) {
+  if (typeof s !== "string") s = String(s);
+  return s.length <= n ? s : `${s.slice(0, n)}… (truncated, ${s.length - n} more chars)`;
 }
 
 // Exposed for unit testing — pure string-building helpers with no I/O.
