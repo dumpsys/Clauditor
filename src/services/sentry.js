@@ -77,11 +77,34 @@ export async function postIssueComment(issueId, text) {
 }
 
 /**
+ * True if a frame has resolved source context attached — the `context_line`
+ * plus surrounding `pre_context` Sentry populates only after source maps
+ * have been applied. Without these, Claude has no source code to read.
+ */
+function frameHasContext(frame) {
+  return (
+    typeof frame?.context_line === "string" &&
+    Array.isArray(frame?.pre_context) &&
+    frame.pre_context.length > 0
+  );
+}
+
+/**
  * Extract the top in-app frame from a Sentry event.
- * React Native / web JS errors typically have frames in
- * `event.entries[].type === "exception"`. We pick the deepest in-app frame
- * (Sentry frames are ordered oldest → newest; the last in-app frame is the
- * one closest to where the throw happened).
+ *
+ * Sentry frames are ordered oldest → newest, so the last in-app frame is the
+ * one closest to where the throw happened. **Preference order:**
+ *
+ *   1. Deepest in_app frame that ALSO has resolved source context. This is
+ *      what we actually want — a frame Claude can read and reason about.
+ *   2. Fallback: deepest in_app frame even without context, so callers like
+ *      `hasResolvedSourceMaps` can still report what they saw.
+ *
+ * Why the two-pass walk: in React Native (Hermes), Sentry tags engine
+ * internals such as `app:///InternalBytecode.js` as `in_app: true`, but those
+ * frames are bytecode with no user source. A naive "deepest in_app wins"
+ * rule would pick the InternalBytecode frame and conclude "no source maps"
+ * even when the user-code frames immediately above it have perfect context.
  */
 export function topInAppFrame(event) {
   const exception = (event?.entries || []).find((e) => e.type === "exception");
@@ -90,6 +113,12 @@ export function topInAppFrame(event) {
   // in Sentry's convention; some events nest causes in earlier entries).
   for (let i = values.length - 1; i >= 0; i--) {
     const frames = values[i]?.stacktrace?.frames || [];
+    // Pass 1: deepest in_app frame with resolved context.
+    for (let j = frames.length - 1; j >= 0; j--) {
+      const f = frames[j];
+      if (f.in_app && frameHasContext(f)) return f;
+    }
+    // Pass 2: fallback — deepest in_app frame even without context.
     for (let j = frames.length - 1; j >= 0; j--) {
       if (frames[j].in_app) return frames[j];
     }
@@ -97,17 +126,27 @@ export function topInAppFrame(event) {
   return null;
 }
 
+// Patterns we treat as definitively NOT user source even if Sentry tagged
+// the frame as in_app. Most are minified-bundle filenames; the last is RN's
+// Hermes bytecode runtime, which gets in_app=true but has no source maps.
+const NON_SOURCE_PATTERNS = [
+  /\.min\.js$/i,
+  /index\.(android|ios)\.bundle/i,
+  /static\/js\/main\.[a-f0-9]+\.js$/i,
+  /^https?:\/\//,                  // raw URL bundle, no source map applied
+  /InternalBytecode\.js$/i,        // React Native / Hermes engine internals
+];
+
 /**
- * Heuristic: did Sentry resolve source maps for the top in-app frame?
+ * Heuristic: did Sentry resolve source maps for a frame Claude can use?
  *
- * For JS / TS / React Native we need:
- *   - the frame to be in_app (not a vendor lib)
- *   - the filename to look like real source, not a bundle
- *   - context_line and pre_context populated (Sentry only fills these
- *     after source-map resolution)
+ * Returns true iff the frame chosen by `topInAppFrame` looks like real
+ * user source (not a bundle / Hermes internal) AND has the context_line +
+ * pre_context that Sentry only populates after source-map resolution.
  *
- * If false, we shouldn't attempt a fix — Claude can't find the code from
- * a minified frame like `index.android.bundle:1:184523`.
+ * `topInAppFrame` already prefers frames with context, so this function
+ * mostly confirms what was picked. If the only in_app frames in the event
+ * are minified / bytecode, both checks fail and we skip the issue.
  */
 export function hasResolvedSourceMaps(event) {
   const frame = topInAppFrame(event);
@@ -115,22 +154,9 @@ export function hasResolvedSourceMaps(event) {
 
   const filename = frame.filename || frame.abs_path || "";
   if (!filename) return false;
+  if (NON_SOURCE_PATTERNS.some((re) => re.test(filename))) return false;
 
-  // Common bundle / minified patterns: skip.
-  const bundlePatterns = [
-    /\.min\.js$/i,
-    /index\.(android|ios)\.bundle/i,
-    /static\/js\/main\.[a-f0-9]+\.js$/i,
-    /^https?:\/\//, // raw URL bundle, no source map applied
-  ];
-  if (bundlePatterns.some((re) => re.test(filename))) return false;
-
-  // Source-map resolution populates these.
-  const hasContext =
-    typeof frame.context_line === "string" &&
-    Array.isArray(frame.pre_context) &&
-    frame.pre_context.length > 0;
-  return hasContext;
+  return frameHasContext(frame);
 }
 
 /**

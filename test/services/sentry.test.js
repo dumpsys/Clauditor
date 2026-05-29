@@ -45,9 +45,10 @@ describe("topInAppFrame", () => {
     assert.equal(topInAppFrame(event), null);
   });
 
-  test("returns the deepest in_app frame (last in the array)", () => {
+  test("returns the deepest in_app frame (last in the array) when no frames have context", () => {
     // Sentry orders frames oldest → newest. The last in_app frame is the
-    // one closest to where the throw happened.
+    // one closest to where the throw happened. With no context anywhere,
+    // the fallback path returns the deepest in_app frame for diagnostics.
     const event = eventWithFrames([
       { in_app: false, filename: "vendor/lib.js" },
       { in_app: true,  filename: "src/screens/A.tsx", function: "render" },
@@ -57,6 +58,30 @@ describe("topInAppFrame", () => {
     const frame = topInAppFrame(event);
     assert.equal(frame.filename, "src/screens/B.tsx");
     assert.equal(frame.function, "click");
+  });
+
+  test("prefers an in_app frame WITH context over a deeper in_app frame without context", () => {
+    // The real-world RN/Hermes case: Sentry tags `InternalBytecode.js` as
+    // in_app even though it has no source context, and that frame sits
+    // *deeper* than the user-code frames. A naive "deepest in_app" rule
+    // would pick the bytecode frame and conclude "no source maps", even
+    // though personalizationService.ts right above it has full context.
+    const withCtx = {
+      in_app: true,
+      filename: "src/services/personalizationService.ts",
+      function: "getPersonalizationPreferences",
+      lineno: 153,
+      context_line: "    const r = await fetch(url);",
+      pre_context: ["async function get() {", "  // ..."],
+    };
+    const event = eventWithFrames([
+      withCtx,
+      { in_app: true, filename: "app:///InternalBytecode.js", function: "tryCallOne", lineno: 1, colno: 1181 },
+      { in_app: true, filename: "app:///InternalBytecode.js", function: "anonymous", lineno: 1, colno: 1875 },
+    ]);
+    const frame = topInAppFrame(event);
+    assert.equal(frame.filename, "src/services/personalizationService.ts");
+    assert.equal(frame.function, "getPersonalizationPreferences");
   });
 });
 
@@ -102,6 +127,36 @@ describe("hasResolvedSourceMaps", () => {
   test("false for raw URL filenames (unbundled / no map applied)", () => {
     const urlFrame = { ...goodFrame, filename: "https://cdn.example.com/bundle.js" };
     assert.equal(hasResolvedSourceMaps(eventWithFrames([urlFrame])), false);
+  });
+
+  test("false for app:///InternalBytecode.js (RN Hermes engine internals)", () => {
+    // Defense in depth: even if InternalBytecode.js had context_line set
+    // (it shouldn't), the bundle-pattern guard catches it. RN tags these
+    // as in_app=true but they're never user source.
+    const bytecode = { ...goodFrame, filename: "app:///InternalBytecode.js" };
+    assert.equal(hasResolvedSourceMaps(eventWithFrames([bytecode])), false);
+  });
+
+  test("true when a deeper in_app frame is bytecode but a higher one has user source", () => {
+    // The full user-reported scenario: topInAppFrame should walk past the
+    // context-less bytecode frame to find personalizationService.ts, and
+    // hasResolvedSourceMaps should report true on that.
+    const userFrame = {
+      in_app: true,
+      filename: "src/services/personalizationService.ts",
+      function: "getPersonalizationPreferences",
+      lineno: 153,
+      context_line: "    throw new PersonalizationError(...)",
+      pre_context: ["async function get() {", "  // ..."],
+      post_context: [],
+    };
+    const bytecodeFrame = {
+      in_app: true,
+      filename: "app:///InternalBytecode.js",
+      function: "tryCallOne",
+      lineno: 1,
+    };
+    assert.equal(hasResolvedSourceMaps(eventWithFrames([userFrame, bytecodeFrame])), true);
   });
 });
 
