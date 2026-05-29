@@ -96,6 +96,182 @@ function extractReviewText(rawOutput) {
   return rawOutput;
 }
 
+/**
+ * Run Claude Code with a Sentry-specific prompt: given a stack trace +
+ * surrounding source context, locate the bug in the repo and propose a
+ * minimal fix. Mirrors `runClaudeCode` but uses its own timeout and prompt.
+ *
+ * Returns the parsed JSON decision with an extra `confidence` field
+ * ("high" | "medium" | "low") that the handler uses to decide PR draft state.
+ */
+export async function runClaudeSentryFix(workDir, context) {
+  const prompt = buildSentryPrompt(context);
+
+  logger.info(`Running: claude -p (Sentry fix prompt) on issue ${context.sentry.issueId}`);
+
+  const args = [
+    "-p",
+    "--output-format", "json",
+    "--allowedTools", "Read,Edit,Write,Bash,Glob,Grep",
+    "--max-turns", "30",
+  ];
+
+  const output = await spawnClaude(args, prompt, workDir, config.sentry.claudeTimeoutMs);
+  return parseSentryOutput(output);
+}
+
+function buildSentryPrompt(context) {
+  const s = context.sentry;
+  const frame = s.event.topFrame;
+  const stackLines = (s.event.inAppStack || [])
+    .map((f) => `    at ${f.function || "<anonymous>"} (${f.filename}:${f.lineno})`)
+    .join("\n");
+
+  const frameBlock = frame
+    ? [
+        `**Top in-app frame:** \`${frame.filename}:${frame.lineno}\` in \`${frame.function || "<anonymous>"}\``,
+        "",
+        "Source context (from Sentry source-map resolution):",
+        "```",
+        ...(frame.preContext || []).map((l, i) => `${frame.lineno - frame.preContext.length + i}: ${l}`),
+        `${frame.lineno}: ${frame.contextLine}   // ← error here`,
+        ...(frame.postContext || []).map((l, i) => `${frame.lineno + 1 + i}: ${l}`),
+        "```",
+      ].join("\n")
+    : "_(no in-app frame available)_";
+
+  const breadcrumbBlock = s.event.breadcrumbs?.length
+    ? "**Recent breadcrumbs (oldest → newest):**\n" +
+      s.event.breadcrumbs
+        .map((b) => `- [${b.level || "info"}] ${b.category || "?"}: ${b.message || ""}`)
+        .join("\n")
+    : "";
+
+  return `
+You are an automated crash-fix assistant. A production error was reported by Sentry for a JavaScript / TypeScript / React Native project. Your job is to locate the bug in this repository and propose a minimal, safe fix.
+
+**Project:** ${context.owner}/${context.repoName}
+**Sentry issue:** ${s.issueId} — ${s.issueUrl}
+**Event count:** ${s.eventCount} occurrences across ${s.userCount || "?"} users
+**Release:** ${s.event.release || "(unknown)"}  |  **Environment:** ${s.event.environment || "(unknown)"}  |  **Platform:** ${s.event.platform || "(unknown)"}
+
+**Error:** \`${s.event.errorType}: ${s.event.errorMessage}\`
+**Culprit (Sentry's guess):** \`${s.event.culprit || "(none)"}\`
+
+${frameBlock}
+
+**Full in-app stack (top 10 frames):**
+\`\`\`
+${stackLines || "(stack unavailable)"}
+\`\`\`
+
+${breadcrumbBlock}
+
+---
+
+**Step 1 — Locate the bug**
+
+- Read the file referenced in the top frame using the Read tool.
+- Confirm the line still matches the source context Sentry showed above. If the file has drifted significantly since the release that crashed (\`${s.event.release || "?"}\`), the fix may no longer apply — say so and emit \`actionable: false\`.
+- Walk up the in-app stack as needed to understand the call site and inputs.
+
+**Step 2 — Decide if this is fixable from this repo**
+
+Emit \`actionable: false\` (skip steps 3–5) when:
+- The root cause is in a third-party library / dependency, not this repo's code
+- The fix requires information not available (e.g. needs the user's data, infra config, a server response shape that isn't in the codebase)
+- The error is environmental (missing env var, native module not linked, RN version mismatch) — these are not code bugs
+- The crash is intentional (e.g. a thrown error for validation that's working as designed)
+- The fix is genuinely ambiguous and you'd be guessing
+
+**Step 3 — Make the minimal fix**
+
+- Change the smallest amount of code that addresses the root cause.
+- Common React Native / JS crash patterns to consider:
+  - \`Cannot read property 'X' of undefined/null\` → add a guard / optional chaining at the access site, OR fix the upstream that should have provided the value
+  - \`TypeError: X is not a function\` → check import path, default vs named export, or that the value isn't being destructured before it's loaded
+  - Array bounds / iteration on non-arrays → validate input shape
+  - Promise rejection → add proper error handling (don't just swallow — log via existing logger or rethrow with context)
+- Do NOT refactor unrelated code. Do NOT broaden the fix beyond the immediate bug.
+
+**Step 4 — Verify**
+
+a. Identify the test runner from \`package.json\`. For React Native: usually \`npm test\` runs Jest.
+b. Run the test command. If it requires Metro bundler / a simulator and can't run headless, mark \`tests_run: false\` and explain.
+c. If tests fail because of your change: fix or revert. Never declare success with failing tests caused by your edit.
+d. If you can't run tests at all (no test runner, requires native build), set \`tests_run: false\` and proceed only if you are confident the change is safe and obviously correct.
+
+**Step 5 — Output the JSON decision**
+
+Output ONLY one of these JSON objects as the LAST thing you write:
+
+\`\`\`json
+{
+  "actionable": true,
+  "confidence": "high",
+  "summary": "Imperative commit-message-style line ≤72 chars. Describe WHAT and WHY. End with a test note (e.g. 'Tests: 87 passed via npm test' or 'Tests: skipped — RN requires native build').",
+  "files_modified": ["path/to/file.ts"],
+  "root_cause": "One sentence describing the underlying cause Sentry caught.",
+  "tests_run": true,
+  "tests_passed": true,
+  "reason": ""
+}
+\`\`\`
+
+\`confidence\` rules:
+- \`"high"\` — you found the exact line, the fix is obviously correct, AND tests passed (or weren't needed for this kind of change). Only then will the PR be opened non-draft.
+- \`"medium"\` — fix looks right but you couldn't fully verify, or there's a plausible alternative interpretation.
+- \`"low"\` — best-effort guess; reviewer should treat this as a starting point.
+
+OR if not actionable:
+
+\`\`\`json
+{
+  "actionable": false,
+  "confidence": "low",
+  "summary": "",
+  "files_modified": [],
+  "root_cause": "Brief explanation of what Sentry caught and why it can't be fixed here.",
+  "tests_run": false,
+  "tests_passed": false,
+  "reason": "Specific reason — e.g. 'crash originates in react-native-image-picker v5.x; needs upstream fix' or 'requires runtime data not in repo'"
+}
+\`\`\`
+
+The JSON block must be the LAST thing in your output.
+`.trim();
+}
+
+function parseSentryOutput(rawOutput) {
+  // Reuse the same extraction pattern as parseClaudeOutput, but require a
+  // confidence field so downstream draft-state logic doesn't break.
+  let text = rawOutput;
+  try {
+    const outer = JSON.parse(rawOutput);
+    if (outer.result) text = outer.result;
+  } catch { /* fall through */ }
+
+  const fenced = text.match(/```json\s*([\s\S]*?)\s*```/);
+  let parsed = null;
+  if (fenced) {
+    try { parsed = JSON.parse(fenced[1]); } catch { /* fall through */ }
+  }
+  if (!parsed) {
+    const inline = text.match(/\{[\s\S]*"actionable"[\s\S]*\}(?=[^{}]*$)/);
+    if (inline) {
+      try { parsed = JSON.parse(inline[0]); } catch { /* fall through */ }
+    }
+  }
+  if (!parsed) {
+    logger.error(`Sentry-fix output did not contain a parseable decision:\n${text}`);
+    throw new Error("Could not extract actionable decision from Claude (Sentry) output");
+  }
+
+  // Default confidence to "low" if Claude omitted it but said actionable.
+  if (parsed.actionable && !parsed.confidence) parsed.confidence = "low";
+  return parsed;
+}
+
 function buildTriagePrompt(context) {
   const fileLine = context.filePath ? `**File:** \`${context.filePath}\`` : "";
   const diffBlock = context.diffHunk
@@ -362,3 +538,17 @@ function parseClaudeOutput(rawOutput) {
   logger.error(`Claude output did not contain a parseable decision:\n${text}`);
   throw new Error("Could not extract actionable decision from Claude output");
 }
+
+// ─── Internals exposed for unit testing ──────────────────────────────────
+// Not part of the public service API — production callers go through the
+// `runClaude*` functions above. Tests import these directly so the pure
+// parsers and prompt builders can be exercised without spawning the CLI.
+export {
+  buildPrompt,
+  buildTriagePrompt,
+  buildSentryPrompt,
+  parseClaudeOutput,
+  parseTriageOutput,
+  parseSentryOutput,
+  extractReviewText,
+};

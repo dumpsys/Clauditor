@@ -26,6 +26,54 @@ async function ghFetch(url, options = {}) {
 }
 
 /**
+ * Check whether a branch exists on the remote. Used by the Sentry handler
+ * to decide between "push to existing fix branch" vs "branch off main".
+ * Returns false on 404, throws on other errors so caller can react.
+ */
+export async function branchExists(owner, repo, branch) {
+  const url = `${GITHUB_API}/repos/${owner}/${repo}/branches/${encodeURIComponent(branch)}`;
+  const res = await fetch(url, { headers: headers() });
+  if (res.status === 404) return false;
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`GitHub branch check failed ${res.status}: ${body}`);
+  }
+  return true;
+}
+
+/**
+ * Find the open PR whose head is the given branch (in this repo, not a fork).
+ * Returns the PR object, or null if no open PR exists.
+ */
+export async function findOpenPRByHead(owner, repo, branch) {
+  const url = `${GITHUB_API}/repos/${owner}/${repo}/pulls?state=open&head=${owner}:${branch}`;
+  const list = await ghFetch(url);
+  return Array.isArray(list) && list.length > 0 ? list[0] : null;
+}
+
+/**
+ * Open a new pull request. `draft` defaults to true — the Sentry workflow
+ * always opens drafts unless Claude reports high confidence.
+ */
+export async function createPullRequest(owner, repo, { title, head, base, body, draft = true }) {
+  const url = `${GITHUB_API}/repos/${owner}/${repo}/pulls`;
+  logger.info(`Creating PR ${owner}/${repo} ${head} → ${base} (draft=${draft})`);
+  return ghFetch(url, {
+    method: "POST",
+    body: JSON.stringify({ title, head, base, body, draft }),
+  });
+}
+
+/**
+ * Post a top-level comment on any issue or PR number. Used by the Sentry
+ * handler to drop the Sentry issue link into the PR.
+ */
+export async function postIssueComment(owner, repo, number, body) {
+  const url = `${GITHUB_API}/repos/${owner}/${repo}/issues/${number}/comments`;
+  return ghFetch(url, { method: "POST", body: JSON.stringify({ body }) });
+}
+
+/**
  * Fetch a pull request — needed for `issue_comment` events because that
  * payload only contains the issue, not the PR head ref/sha.
  */

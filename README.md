@@ -43,6 +43,35 @@ Guard: PR author == GITHUB_BOT_USERNAME ?
                                         └── not actionable → log + return (silent on the PR)
 ```
 
+### C. Sentry crash-to-PR workflow
+
+```
+Sentry issue (new / regression) for JS/TS/RN project
+        │
+        ▼
+Webhook → verifySentrySignature → sentryQueue (parallel, dedup by issue ID)
+        │
+        ▼
+handlers/sentryIssue.js
+        │
+        ├── Source-map gate (skip + Sentry-comment if frames are minified)
+        │
+        ├── Branch `sentry-fix/<issueId>` exists on GitHub?
+        │       ├── yes → clone it (incremental fix on the existing PR)
+        │       └── no  → clone base branch + create the new branch locally
+        │
+        ├── claude -p (Sentry-specific prompt: stack + source context + breadcrumbs)
+        │       │
+        │       ├── actionable:false → Sentry-comment "no fix proposed: <reason>"
+        │       └── actionable:true ↓
+        │
+        ├── git commit + push
+        ├── Open PR if none exists (draft unless confidence: "high")
+        └── Sentry-comment with PR link
+```
+
+See [`docs/sentry-integration.md`](./docs/sentry-integration.md) for the full design.
+
 ### B. Review-request workflow
 
 ```
@@ -210,6 +239,15 @@ If you've already posted feedback on a PR and then realize you'd like Clauditor 
 | `CLAUDE_REVIEW_TIMEOUT_MS` | | `4 × CLAUDE_TIMEOUT_MS` | Max time for `/review` jobs — reviews are heavier than comment fixes (ms) |
 | `LOG_LEVEL` | | `info` | `debug` / `info` / `warn` / `error` |
 | `LOG_UTC` | | _empty_ | When set to `true`, log timestamps are emitted in UTC (e.g. `…Z`) instead of the machine's local time with offset (e.g. `…+07:00`). |
+| `SENTRY_CLIENT_SECRET` | | _empty_ | Internal Integration client secret. Setting this enables Workflow C and makes the other `SENTRY_*` vars required. |
+| `SENTRY_AUTH_TOKEN` | when Sentry enabled | — | Sentry API token (`event:read`, `project:read`, `issue:write`) |
+| `SENTRY_PROJECT_REPO_MAP` | when Sentry enabled | — | `slug-a:owner/repo-a,slug-b:owner/repo-b` |
+| `SENTRY_API_BASE_URL` | | `https://sentry.io/api/0` | Self-hosted Sentry endpoint override |
+| `SENTRY_BASE_BRANCH` | | `main` | Branch new fix branches are created from |
+| `SENTRY_BRANCH_PREFIX` | | `sentry-fix/` | Branch name is `${prefix}${issueId}` |
+| `SENTRY_MIN_EVENT_COUNT` | | `1` | Skip issues below this event-count threshold |
+| `SENTRY_MAX_CONCURRENT_JOBS` | | `2` | Parallel Sentry workers; duplicates per issue ID are coalesced |
+| `SENTRY_CLAUDE_TIMEOUT_MS` | | `600000` | Per-job Claude timeout for Sentry fixes (ms) |
 
 ---
 
@@ -243,18 +281,23 @@ clauditor/
 │   ├── app.js                 # Express app (middleware + routes)
 │   ├── config.js              # Env loading + validation
 │   ├── routes/
-│   │   ├── webhook.js         # POST /webhook
+│   │   ├── webhook.js         # POST /webhook            (GitHub)
+│   │   ├── sentryWebhook.js   # POST /sentry-webhook     (Sentry, Workflow C)
 │   │   └── health.js          # GET  /health
 │   ├── middleware/
-│   │   └── verifySignature.js # HMAC-SHA256 signature middleware
+│   │   ├── verifySignature.js       # GitHub HMAC-SHA256 signature middleware
+│   │   └── verifySentrySignature.js # Sentry HMAC-SHA256 signature middleware
 │   ├── services/
-│   │   ├── claude.js          # Claude Code CLI invocation
+│   │   ├── claude.js          # Claude Code CLI invocation (+ Sentry-fix prompt)
 │   │   ├── git.js             # Clone, commit, push operations
-│   │   └── github.js          # GitHub REST API client
+│   │   ├── github.js          # GitHub REST API client
+│   │   └── sentry.js          # Sentry REST API client + event helpers
 │   ├── handlers/
 │   │   ├── comment.js         # Review/issue-comment orchestration
-│   │   └── reviewRequest.js   # `/review` orchestration on review-request
-│   ├── queue.js               # In-memory job queue (serialized)
+│   │   ├── reviewRequest.js   # `/review` orchestration on review-request
+│   │   └── sentryIssue.js     # Sentry crash-to-PR orchestration
+│   ├── queue.js               # In-memory job queue (serialized, GitHub events)
+│   ├── sentryQueue.js         # Parallel worker pool with in-flight dedup
 │   └── logger.js              # Simple structured logger
 ├── scripts/
 │   └── test-webhook.js        # Local webhook simulator

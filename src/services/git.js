@@ -68,6 +68,43 @@ export const gitOperations = {
   },
 
   /**
+   * Clone the base branch and create a new local branch on top of it.
+   * Used by the Sentry handler when no existing fix branch is found.
+   * The new branch is NOT pushed yet — that happens in commitAndPush.
+   */
+  cloneAndCreateBranch(repoUrl, workDir, baseBranch, newBranch) {
+    logger.info(`Cloning base '${baseBranch}' and creating '${newBranch}'...`);
+
+    run("git", [
+      ...authHeaderArgs(),
+      "clone",
+      "--depth", "1",
+      "--branch", baseBranch,
+      "--single-branch",
+      repoUrl,
+      workDir,
+    ], { cwd: "/" });
+
+    run("git", ["checkout", "-b", newBranch], { cwd: workDir });
+
+    run("git", ["config", "user.email", config.gitEmail], { cwd: workDir });
+    run("git", ["config", "user.name", config.gitName], { cwd: workDir });
+
+    const basic = Buffer.from(`x-access-token:${config.githubToken}`).toString("base64");
+    run("git", ["config", "http.extraHeader", `Authorization: Basic ${basic}`], { cwd: workDir });
+  },
+
+  /**
+   * Push a freshly-created local branch, setting upstream. Distinct from
+   * commitAndPush — used when the branch is brand new and no commit has
+   * been made yet (e.g. we want the branch to exist before opening a PR).
+   * Most callers won't need this; commitAndPush handles the common case.
+   */
+  pushNewBranch(workDir, branch) {
+    run("git", ["push", "-u", "origin", branch], { cwd: workDir });
+  },
+
+  /**
    * Stage all changes, commit, and push. Returns the commit SHA.
    */
   commitAndPush(workDir, branch, message) {
