@@ -247,6 +247,74 @@ describe("summarizeEvent", () => {
   });
 });
 
+describe("camelCase frames from Sentry events API", () => {
+  // Sentry's REST API returns frames with camelCase fields (inApp, lineNo,
+  // colNo, absPath) and a single `context: [[lineNo, code], ...]` array
+  // instead of separate pre_context / context_line / post_context arrays.
+  // Webhook payloads use snake_case. Our code must accept both — this is
+  // the exact regression that came in from a real RN/Hermes event.
+  const apiShapeFrame = {
+    filename: "src/services/personalizationService.ts",
+    absPath: "app:///src/services/personalizationService.ts",
+    function: "getPersonalizationPreferences",
+    inApp: true,
+    lineNo: 132,
+    colNo: 13,
+    context: [
+      [127, "      const currentLanguage = getAcceptLanguage();"],
+      [128, "      const response = await glchatService.executeWithTokenRefresh("],
+      [129, "        async (client) =>"],
+      [130, "          client.users.personalization.isEnabled({"],
+      [131, "            \"Accept-Language\": currentLanguage,"],
+      [132, "          }),"],
+      [133, "      );"],
+      [134, ""],
+    ],
+  };
+
+  test("topInAppFrame finds the camelCase in_app frame and returns it normalized", () => {
+    const frame = topInAppFrame(eventWithFrames([apiShapeFrame]));
+    assert.ok(frame, "should find an in_app frame");
+    assert.equal(frame.in_app, true);
+    assert.equal(frame.filename, "src/services/personalizationService.ts");
+    assert.equal(frame.lineno, 132);
+    assert.equal(frame.context_line, "          }),");
+    assert.deepEqual(frame.pre_context.slice(-2), [
+      "          client.users.personalization.isEnabled({",
+      "            \"Accept-Language\": currentLanguage,",
+    ]);
+    assert.deepEqual(frame.post_context, ["      );", ""]);
+  });
+
+  test("hasResolvedSourceMaps accepts an event with only camelCase frames", () => {
+    assert.equal(hasResolvedSourceMaps(eventWithFrames([apiShapeFrame])), true);
+  });
+
+  test("describeSourceMapGate counts camelCase frames as in_app (regression fixed)", () => {
+    // Before the fix this produced "no in_app frame found … 0 in_app".
+    const desc = describeSourceMapGate(eventWithFrames([apiShapeFrame]));
+    assert.match(desc, /ACCEPT/);
+    assert.match(desc, /1 in_app/);
+    assert.match(desc, /1 with context/);
+  });
+
+  test("camelCase frame inside a mixed stack still beats a deeper bytecode frame", () => {
+    // Real reported stack: deepest in_app frame in the array is the Hermes
+    // bytecode runtime; the user-code frame above it should still win.
+    const bytecode = {
+      filename: "app:///InternalBytecode.js",
+      absPath: "app:///InternalBytecode.js",
+      function: "tryCallOne",
+      inApp: true,
+      lineNo: 1,
+      colNo: 1181,
+      context: [],
+    };
+    const frame = topInAppFrame(eventWithFrames([apiShapeFrame, bytecode]));
+    assert.equal(frame.filename, "src/services/personalizationService.ts");
+  });
+});
+
 describe("describeSourceMapGate (diagnostic string)", () => {
   test("reports 'no exception entry' when the event has no exception", () => {
     const desc = describeSourceMapGate({ entries: [{ type: "breadcrumbs", data: { values: [] } }] });

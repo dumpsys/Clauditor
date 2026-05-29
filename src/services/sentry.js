@@ -77,9 +77,75 @@ export async function postIssueComment(issueId, text) {
 }
 
 /**
- * True if a frame has resolved source context attached — the `context_line`
- * plus surrounding `pre_context` Sentry populates only after source maps
- * have been applied. Without these, Claude has no source code to read.
+ * Sentry's events API and webhook payloads ship frames in two different
+ * shapes:
+ *
+ *   - **Webhook payload** (issue webhooks): snake_case fields, source
+ *     context split into `pre_context` / `context_line` / `post_context`.
+ *   - **Events REST API** (`/issues/{id}/events/latest/`): camelCase
+ *     fields (`inApp`, `lineNo`, `colNo`, `absPath`) and source context as
+ *     a single `context: [[lineNo, code], ...]` array.
+ *
+ * `normalizeFrame` returns a canonical frame Claude/the gate can consume
+ * regardless of source. Accepts either shape; falls through cleanly when
+ * fields are missing.
+ */
+function normalizeFrame(f) {
+  if (!f) return null;
+  const inApp = f.in_app ?? f.inApp ?? false;
+  const filename = f.filename || f.abs_path || f.absPath || "";
+  const lineno = f.lineno ?? f.lineNo ?? null;
+  const colno = f.colno ?? f.colNo ?? null;
+  const fn = f.function ?? null;
+
+  // Already-normalized (webhook) shape: pass through.
+  let preContext = Array.isArray(f.pre_context) ? f.pre_context : null;
+  let contextLine = typeof f.context_line === "string" ? f.context_line : null;
+  let postContext = Array.isArray(f.post_context) ? f.post_context : null;
+
+  // API shape: `context` is an array of [lineNumber, codeLine] pairs. Split
+  // it around the error line (matched by lineno) into pre/line/post so
+  // downstream code can read the canonical shape.
+  if (
+    !contextLine &&
+    Array.isArray(f.context) &&
+    f.context.length > 0
+  ) {
+    const lines = f.context;
+    const errorIdx = lineno != null
+      ? lines.findIndex(([n]) => n === lineno)
+      : -1;
+    if (errorIdx !== -1) {
+      preContext = lines.slice(0, errorIdx).map(([, code]) => code);
+      contextLine = String(lines[errorIdx][1] ?? "");
+      postContext = lines.slice(errorIdx + 1).map(([, code]) => code);
+    } else {
+      // Error line not present in context array — use the whole window as
+      // pre_context and synthesize an empty context_line so frameHasContext
+      // still recognizes it.
+      preContext = lines.map(([, code]) => code);
+      contextLine = "";
+      postContext = [];
+    }
+  }
+
+  return {
+    in_app: Boolean(inApp),
+    filename,
+    function: fn,
+    lineno,
+    colno,
+    context_line: contextLine,
+    pre_context: preContext,
+    post_context: postContext,
+  };
+}
+
+/**
+ * True if a frame has resolved source context attached. After
+ * normalizeFrame, this is the snake_case shape regardless of where the
+ * frame came from. The `pre_context.length > 0` guard rejects synthesized
+ * empty-context cases (see normalizeFrame fallback).
  */
 function frameHasContext(frame) {
   return (
@@ -115,12 +181,13 @@ export function topInAppFrame(event) {
     const frames = values[i]?.stacktrace?.frames || [];
     // Pass 1: deepest in_app frame with resolved context.
     for (let j = frames.length - 1; j >= 0; j--) {
-      const f = frames[j];
-      if (f.in_app && frameHasContext(f)) return f;
+      const norm = normalizeFrame(frames[j]);
+      if (norm?.in_app && frameHasContext(norm)) return norm;
     }
     // Pass 2: fallback — deepest in_app frame even without context.
     for (let j = frames.length - 1; j >= 0; j--) {
-      if (frames[j].in_app) return frames[j];
+      const norm = normalizeFrame(frames[j]);
+      if (norm?.in_app) return norm;
     }
   }
   return null;
@@ -150,7 +217,12 @@ export function describeSourceMapGate(event) {
   if (values.length === 0) {
     return `no exception entry in event (entries=${(event?.entries || []).map((e) => e.type).join(",") || "none"})`;
   }
-  const allFrames = values.flatMap((v) => v.stacktrace?.frames || []);
+  // Normalize every frame once so the in_app / context counts work for both
+  // webhook (snake_case) and events-API (camelCase) shapes.
+  const allFrames = values
+    .flatMap((v) => v.stacktrace?.frames || [])
+    .map(normalizeFrame)
+    .filter(Boolean);
   const inAppFrames = allFrames.filter((f) => f.in_app);
   const withContext = inAppFrames.filter(frameHasContext);
 
@@ -248,12 +320,14 @@ export function summarizeEvent(event, issue) {
           postContext: frame.post_context || [],
         }
       : null,
-    // Full in-app stack (top 10) for richer prompt context.
+    // Full in-app stack (top 10) for richer prompt context. Normalize each
+    // frame so we cover both webhook (snake_case) and API (camelCase) shapes.
     inAppStack: (exc.stacktrace?.frames || [])
-      .filter((f) => f.in_app)
+      .map(normalizeFrame)
+      .filter((f) => f && f.in_app)
       .slice(-10)
       .map((f) => ({
-        filename: f.filename || f.abs_path,
+        filename: f.filename,
         function: f.function,
         lineno: f.lineno,
         contextLine: f.context_line,
