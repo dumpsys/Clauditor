@@ -95,6 +95,12 @@ export const config = {
     10
   ),
   logLevel: process.env.LOG_LEVEL?.toLowerCase() || "info",
+  // Max request-body size accepted by express.json(). Default 5 MB —
+  // Sentry issue webhooks routinely exceed Express's 100 KB default once
+  // a stack trace + source context + breadcrumbs are included; large GitHub
+  // PR review payloads can also push past it. Accepts any byte-string the
+  // `bytes` library understands ("5mb", "500kb", etc.).
+  webhookBodyLimit: process.env.WEBHOOK_BODY_LIMIT || "5mb",
 
   // ─── Sentry (Workflow C) ──────────────────────────────────────────────
   sentry: {

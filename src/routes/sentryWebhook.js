@@ -35,12 +35,16 @@ router.post("/sentry-webhook", verifySentrySignature, (req, res) => {
   const action = payload.action;
 
   if (resource !== "issue") {
-    return res.status(200).json({ message: `Sentry resource '${resource}' ignored` });
+    return res
+      .status(200)
+      .json({ message: `Sentry resource '${resource}' ignored` });
   }
   if (action !== "created") {
     // "resolved" / "assigned" / "ignored" → not our concern. New issues
     // and regressions both arrive as "created".
-    return res.status(200).json({ message: `Sentry action '${action}' ignored` });
+    return res
+      .status(200)
+      .json({ message: `Sentry action '${action}' ignored` });
   }
 
   const issue = payload.data?.issue;
@@ -53,12 +57,18 @@ router.post("/sentry-webhook", verifySentrySignature, (req, res) => {
   // setup — check both.
   const projectSlug = issue.project?.slug || payload.data?.project?.slug;
   if (!projectSlug) {
-    return res.status(200).json({ message: "Sentry payload missing project slug" });
+    return res
+      .status(200)
+      .json({ message: "Sentry payload missing project slug" });
   }
   const repoTarget = config.sentry.projectRepoMap.get(projectSlug);
   if (!repoTarget) {
-    logger.info(`Sentry project '${projectSlug}' not mapped to any repo — ignoring`);
-    return res.status(200).json({ message: `Project '${projectSlug}' not mapped` });
+    logger.info(
+      `Sentry project '${projectSlug}' not mapped to any repo — ignoring`,
+    );
+    return res
+      .status(200)
+      .json({ message: `Project '${projectSlug}' not mapped` });
   }
 
   // Event count threshold — Sentry sends a `count` (as string in some
@@ -74,7 +84,10 @@ router.post("/sentry-webhook", verifySentrySignature, (req, res) => {
 
   const job = {
     issueId: String(issue.id),
-    issueUrl: issue.web_url || issue.permalink || `https://sentry.io/issues/${issue.id}/`,
+    issueUrl:
+      issue.web_url ||
+      issue.permalink ||
+      `https://sentry.io/issues/${issue.id}/`,
     repoTarget,
     receivedAt: new Date().toISOString(),
   };
@@ -90,9 +103,11 @@ router.post("/sentry-webhook", verifySentrySignature, (req, res) => {
 
   logger.info(
     `Sentry job enqueued: issue ${job.issueId} → ${repoTarget.owner}/${repoTarget.repo} ` +
-    `(active=${sentryQueue.activeCount()}, pending=${sentryQueue.pendingCount()})`
+      `(active=${sentryQueue.activeCount()}, pending=${sentryQueue.pendingCount()})`,
   );
-  res.status(202).json({ message: "Accepted", queued: true, issueId: job.issueId });
+  res
+    .status(202)
+    .json({ message: "Accepted", queued: true, issueId: job.issueId });
 });
 
 export default router;

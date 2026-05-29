@@ -238,6 +238,7 @@ If you've already posted feedback on a PR and then realize you'd like Clauditor 
 | `CLAUDE_TIMEOUT_MS` | | `300000` | Max time for the comment handler's Claude run (ms) |
 | `CLAUDE_REVIEW_TIMEOUT_MS` | | `4 × CLAUDE_TIMEOUT_MS` | Max time for `/review` jobs — reviews are heavier than comment fixes (ms) |
 | `LOG_LEVEL` | | `info` | `debug` / `info` / `warn` / `error` |
+| `WEBHOOK_BODY_LIMIT` | | `5mb` | Max request body size accepted by `express.json()`. Override Express's 100 KB default so real Sentry/GitHub payloads (stack traces, large PR reviews) don't 413 before HMAC verification. Accepts `bytes`-style strings: `500kb`, `5mb`, `10mb`, etc. |
 | `LOG_UTC` | | _empty_ | When set to `true`, log timestamps are emitted in UTC (e.g. `…Z`) instead of the machine's local time with offset (e.g. `…+07:00`). |
 | `SENTRY_CLIENT_SECRET` | | _empty_ | Internal Integration client secret. Setting this enables Workflow C and makes the other `SENTRY_*` vars required. |
 | `SENTRY_AUTH_TOKEN` | when Sentry enabled | — | Sentry API token (`event:read`, `project:read`, `issue:write`) |

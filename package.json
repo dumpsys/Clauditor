@@ -8,8 +8,8 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "test": "node --test",
-    "test:coverage": "node --experimental-test-coverage --test",
+    "test": "node --test 'test/**/*.test.js'",
+    "test:coverage": "node --experimental-test-coverage --test 'test/**/*.test.js'",
     "test:webhook": "node scripts/test-webhook.js"
   },
   "engines": {
