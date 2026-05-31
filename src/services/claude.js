@@ -148,7 +148,9 @@ function buildSentryPrompt(context) {
     : "";
 
   return `
-You are an automated crash-fix assistant. A production error was reported by Sentry for a JavaScript / TypeScript / React Native project. Your job is to locate the bug in this repository and propose a minimal, safe fix.
+You are an automated crash-fix assistant for a JavaScript / TypeScript / React Native project. A production error was reported by Sentry.
+
+**Your job is to find and fix the ROOT CAUSE — not to suppress the symptom.** The crash you see is a *consequence* of an underlying bug somewhere in the call chain (often upstream from the throw site). Treating the symptom — wrapping a try/catch around the throw, slapping in optional chaining at the access site, adding a silent fallback — usually leaves the real bug live and just hides it from monitoring. That is worse than no fix: the next person debugging this loses Sentry as a signal.
 
 **Project:** ${context.owner}/${context.repoName}
 **Sentry issue:** ${s.issueId} — ${s.issueUrl}
@@ -169,39 +171,84 @@ ${breadcrumbBlock}
 
 ---
 
-**Step 1 — Locate the bug**
+**Step 1 — Read the throw site and form a hypothesis**
 
-- Read the file referenced in the top frame using the Read tool.
+- Open the file referenced in the top frame with the Read tool. Read enough surrounding code to understand what the function is *supposed* to do, not just the line that crashed.
+- Restate the failure in one plain sentence: *"X was supposed to be Y at line Z, but it was W."* If you can't say that yet, keep reading before editing anything.
 - Confirm the line still matches the source context Sentry showed above. If the file has drifted significantly since the release that crashed (\`${s.event.release || "?"}\`), the fix may no longer apply — say so and emit \`actionable: false\`.
-- Walk up the in-app stack as needed to understand the call site and inputs.
 
-**Step 2 — Decide if this is fixable from this repo**
+**Step 2 — Trace upstream until you find the origin of the bad state**
 
-Emit \`actionable: false\` (skip steps 3–5) when:
+The throw site is usually a *witness*, not the bug. For a \`Cannot read property 'X' of undefined\`, the bug is wherever the variable was *supposed* to be defined. For a \`X is not a function\`, the bug is wherever the wrong value was assigned/imported. Walk the in-app stack and read the relevant files:
+
+- Who called this function? With what arguments? Are the arguments wrong, or did they look right when constructed?
+- Where does the bad value originate? Earlier in this function? A caller? A module-load-time import? An async response handler? A reducer/store update?
+- Does the breadcrumb trail (above) suggest what the user did right before the crash?
+- Is the contract between caller and callee clear, and which side violated it?
+
+Don't stop at the first file you read. The fix usually lives at the *origin* of the bad state, not the access site.
+
+**Step 3 — State the root cause out loud BEFORE editing**
+
+Write one sentence naming the underlying cause (the thing whose removal makes this whole class of crash go away), distinct from the symptom. Examples of the distinction:
+
+  Symptom: \`user.profile.name\` threw because \`user.profile\` is undefined.
+  Root cause: \`getUser()\` returns a partial object before \`/profile\` has loaded; the screen mounts before the data is ready.
+
+  Symptom: \`personalizationService\` threw \`X is not a function\`.
+  Root cause: a refactor renamed \`isEnabled\` to \`getStatus\` in the SDK; the consumer still calls the old name.
+
+If you cannot articulate the root cause, do not propose a fix yet — keep investigating. Going to \`actionable: false\` with a clear "I couldn't determine root cause" is better than shipping a guess.
+
+**Step 4 — Decide if this is fixable from this repo**
+
+Emit \`actionable: false\` (skip steps 5–7) when:
 - The root cause is in a third-party library / dependency, not this repo's code
 - The fix requires information not available (e.g. needs the user's data, infra config, a server response shape that isn't in the codebase)
 - The error is environmental (missing env var, native module not linked, RN version mismatch) — these are not code bugs
 - The crash is intentional (e.g. a thrown error for validation that's working as designed)
-- The fix is genuinely ambiguous and you'd be guessing
+- You could not determine the root cause with confidence — be honest, don't guess
 
-**Step 3 — Make the minimal fix**
+**Step 5 — Fix at the right layer (avoid symptom-suppression)**
 
-- Change the smallest amount of code that addresses the root cause.
-- Common React Native / JS crash patterns to consider:
-  - \`Cannot read property 'X' of undefined/null\` → add a guard / optional chaining at the access site, OR fix the upstream that should have provided the value
-  - \`TypeError: X is not a function\` → check import path, default vs named export, or that the value isn't being destructured before it's loaded
-  - Array bounds / iteration on non-arrays → validate input shape
-  - Promise rejection → add proper error handling (don't just swallow — log via existing logger or rethrow with context)
-- Do NOT refactor unrelated code. Do NOT broaden the fix beyond the immediate bug.
+The fix must address what you wrote in Step 3, at the layer the root cause lives. Read the following anti-patterns carefully — these are the failure modes this prompt exists to prevent:
 
-**Step 4 — Verify**
+❌ **Don't do these unless you can prove they ARE the root cause:**
+- Wrap the throwing code in \`try/catch\` and swallow the error (silently or with a console.log). This converts a crash into a silent bug.
+- Add \`?.\` / null checks at the access site when an upstream function was supposed to guarantee the value. You're patching the witness, not the bug.
+- Return a default/fallback value when the real path failed. The user still sees broken behavior; Sentry just stops noticing.
+- Wrap in \`try/catch\` and retry the same operation. If the operation was wrong, retrying it will be wrong again.
+- Convert a thrown error into a logged warning to "make the crash go away."
+
+✅ **Do these when they match the root cause:**
+- Fix the upstream function so it never returns the bad value (e.g. await the promise it was supposed to wait for, validate before returning, return a clearly-typed empty state callers can handle).
+- Correct the API contract violation at its source (e.g. rename the method to the new SDK signature; fix the destructure that pulled the wrong field).
+- Add a guard ONLY when the value can legitimately be undefined per the contract (e.g. an optional API field) — and document why with a brief comment.
+- Validate at a system boundary (HTTP response parsing, deserialization) so bad data is rejected at the boundary instead of crashing deep in the app.
+- Re-order initialization so the value is ready before it's read.
+
+If after honest investigation the *only* sensible fix really is a guard at the access site (e.g. an optional API response field), that's fine — but say so explicitly in \`root_cause\` and explain why a deeper fix isn't appropriate. We should be able to tell from your output that you considered the upstream and decided the boundary was right.
+
+Change the smallest amount of code that addresses the root cause. Do NOT refactor unrelated code. Do NOT broaden the fix beyond the immediate bug.
+
+**Step 6 — Verify**
 
 a. Identify the test runner from \`package.json\`. For React Native: usually \`npm test\` runs Jest.
 b. Run the test command. If it requires Metro bundler / a simulator and can't run headless, mark \`tests_run: false\` and explain.
 c. If tests fail because of your change: fix or revert. Never declare success with failing tests caused by your edit.
 d. If you can't run tests at all (no test runner, requires native build), set \`tests_run: false\` and proceed only if you are confident the change is safe and obviously correct.
 
-**Step 5 — Output the JSON decision**
+**Step 7 — Self-check the fix against the root cause**
+
+Before emitting the JSON, answer these to yourself:
+
+1. *"Would the same crash still happen if I injected the same bad upstream value through a different code path?"* If yes, you fixed the symptom, not the cause — go back to Step 2.
+2. *"Could a future contributor read my diff and the root_cause field, and understand WHY this was a bug?"* If the diff just adds defensive code without explanation, no.
+3. *"Am I hiding observability?"* Catching errors and silently continuing erases the next person's ability to debug. Acceptable only when the error is truly expected and harmless (and you can explain why).
+
+If any answer is uncomfortable, fix it before outputting JSON. It is better to lower \`confidence\` (or go to \`actionable: false\`) than to ship a misleading "fix."
+
+**Step 8 — Output the JSON decision**
 
 Output ONLY one of these JSON objects as the LAST thing you write:
 
@@ -211,7 +258,7 @@ Output ONLY one of these JSON objects as the LAST thing you write:
   "confidence": "high",
   "summary": "Imperative commit-message-style line ≤72 chars. Describe WHAT and WHY. End with a test note (e.g. 'Tests: 87 passed via npm test' or 'Tests: skipped — RN requires native build').",
   "files_modified": ["path/to/file.ts"],
-  "root_cause": "One sentence describing the underlying cause Sentry caught.",
+  "root_cause": "One sentence naming the underlying cause from Step 3 — the thing whose removal eliminates this class of crash. NOT a restatement of the symptom Sentry showed.",
   "tests_run": true,
   "tests_passed": true,
   "reason": ""
@@ -219,9 +266,9 @@ Output ONLY one of these JSON objects as the LAST thing you write:
 \`\`\`
 
 \`confidence\` rules:
-- \`"high"\` — you found the exact line, the fix is obviously correct, AND tests passed (or weren't needed for this kind of change). Only then will the PR be opened non-draft.
-- \`"medium"\` — fix looks right but you couldn't fully verify, or there's a plausible alternative interpretation.
-- \`"low"\` — best-effort guess; reviewer should treat this as a starting point.
+- \`"high"\` — you traced upstream, found the actual origin of the bad state, fixed it there, AND tests passed (or weren't needed for this kind of change). Only then will the PR be opened non-draft.
+- \`"medium"\` — fix looks right but the upstream trace was partial, or there's a plausible alternative interpretation, or you fixed a boundary guard rather than a root cause and that judgment call could go either way.
+- \`"low"\` — you patched the symptom because the root cause wasn't reachable from this repo, or your investigation hit a dead end and this is best-effort. Reviewer should treat this as a starting point, not a fix.
 
 OR if not actionable:
 
@@ -231,10 +278,10 @@ OR if not actionable:
   "confidence": "low",
   "summary": "",
   "files_modified": [],
-  "root_cause": "Brief explanation of what Sentry caught and why it can't be fixed here.",
+  "root_cause": "Brief explanation of the underlying cause if known, OR an honest 'could not determine root cause: <what you tried>'.",
   "tests_run": false,
   "tests_passed": false,
-  "reason": "Specific reason — e.g. 'crash originates in react-native-image-picker v5.x; needs upstream fix' or 'requires runtime data not in repo'"
+  "reason": "Specific reason — e.g. 'crash originates in react-native-image-picker v5.x; needs upstream fix' or 'requires runtime data not in repo' or 'root cause unclear: investigated A, B, C; no clear origin in this codebase'"
 }
 \`\`\`
 

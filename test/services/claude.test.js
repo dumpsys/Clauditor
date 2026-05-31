@@ -274,6 +274,50 @@ describe("buildSentryPrompt", () => {
     assert.match(p, /"low"/);
   });
 
+  test("frames the task as root-cause analysis, not symptom suppression", () => {
+    // This is the contract that prevents Claude from "fixing" crashes by
+    // wrapping the throw site in try/catch and calling it a day. The prompt
+    // must explicitly name the failure mode so the model is biased away.
+    const p = buildSentryPrompt(ctx);
+    assert.match(p, /ROOT CAUSE/);
+    assert.match(p, /symptom/i);
+    assert.match(p, /try\/catch/i);
+  });
+
+  test("requires the model to trace upstream from the throw site", () => {
+    const p = buildSentryPrompt(ctx);
+    // Step 2 has to teach: the throw site is a witness, not the bug.
+    assert.match(p, /Trace upstream/i);
+    assert.match(p, /witness/i);
+  });
+
+  test("forces an explicit root-cause statement BEFORE editing", () => {
+    const p = buildSentryPrompt(ctx);
+    assert.match(p, /State the root cause/i);
+    assert.match(p, /BEFORE editing/i);
+  });
+
+  test("lists the symptom-suppression anti-patterns explicitly", () => {
+    const p = buildSentryPrompt(ctx);
+    // Every anti-pattern operators have complained about — make sure they
+    // are all called out by name so Claude can't drift back to them.
+    assert.match(p, /swallow/i);
+    assert.match(p, /optional chaining|\\?\\./i);
+    assert.match(p, /silently continuing|silently/i);
+    assert.match(p, /retry the same operation/i);
+  });
+
+  test("includes a self-check pass before the JSON output", () => {
+    const p = buildSentryPrompt(ctx);
+    assert.match(p, /Self-check/i);
+    assert.match(p, /injected the same bad upstream value/);
+  });
+
+  test("instructs root_cause to name the underlying cause, not the symptom", () => {
+    const p = buildSentryPrompt(ctx);
+    assert.match(p, /NOT a restatement of the symptom/i);
+  });
+
   test("handles a null topFrame gracefully (no crash; fallback message)", () => {
     const ctx2 = {
       ...ctx,
