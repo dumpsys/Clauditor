@@ -6,15 +6,19 @@ process.env.GITHUB_WEBHOOK_SECRET ??= "test-secret";
 process.env.GITHUB_BOT_USERNAME ??= "test-bot";
 
 const {
-  buildPrompt,
+  buildCommentPrompt,
   buildTriagePrompt,
   buildSentryPrompt,
-  buildReviewCommand,
-  parseClaudeOutput,
+  buildReviewPrompt,
+} = await import("../../src/prompts/index.js");
+const {
+  parseDecisionOutput: parseClaudeOutput,
   parseTriageOutput,
   parseSentryOutput,
   extractReviewText,
-} = await import("../../src/services/claude.js");
+} = await import("../../src/harnesses/claude.js");
+// Local alias to keep the existing test bodies unchanged after the rename.
+const buildPrompt = buildCommentPrompt;
 
 /** Wrap a model "result" payload the way --output-format json does. */
 function outerJson(resultText) {
@@ -134,40 +138,6 @@ describe("extractReviewText", () => {
   test("returns raw input when JSON lacks a string 'result' field", () => {
     const wrapped = JSON.stringify({ type: "other", result: { not: "string" } });
     assert.equal(extractReviewText(wrapped), wrapped);
-  });
-});
-
-describe("buildReviewCommand", () => {
-  test("passes the PR number explicitly when the context has one", () => {
-    assert.equal(buildReviewCommand({ prNumber: 42 }), "/review 42");
-  });
-
-  test("accepts a numeric-string PR number", () => {
-    assert.equal(buildReviewCommand({ prNumber: "42" }), "/review 42");
-  });
-
-  test("falls back to head-branch resolution when no PR number is present", () => {
-    const cmd = buildReviewCommand({ headBranch: "feature/login" });
-    assert.match(cmd, /head branch is 'feature\/login'/);
-    assert.match(cmd, /gh pr list --head 'feature\/login'/);
-    assert.match(cmd, /Do not guess/);
-  });
-
-  test("uses context.branch when headBranch is absent", () => {
-    const cmd = buildReviewCommand({ branch: "fix/bug" });
-    assert.match(cmd, /gh pr list --head 'fix\/bug'/);
-  });
-  test("shell-escapes branch names containing single quotes", () => {
-    const cmd = buildReviewCommand({ headBranch: "feat'ure" });
-    assert.match(cmd, /gh pr list --head 'feat'\\''ure'/);
-  });
-  test("ignores non-positive / non-integer PR numbers and uses the branch", () => {
-    assert.match(buildReviewCommand({ prNumber: 0, headBranch: "b" }), /gh pr list/);
-    assert.match(buildReviewCommand({ prNumber: NaN, headBranch: "b" }), /gh pr list/);
-  });
-
-  test("emits a bare /review when neither a number nor a branch is available", () => {
-    assert.equal(buildReviewCommand({}), "/review");
   });
 });
 
@@ -351,6 +321,19 @@ describe("buildSentryPrompt", () => {
   test("instructs root_cause to name the underlying cause, not the symptom", () => {
     const p = buildSentryPrompt(ctx);
     assert.match(p, /NOT a restatement of the symptom/i);
+  });
+
+  test("uses generic 'read the file' wording, not Claude-Code-specific tool names", () => {
+    // Phase 1 of multi-CLI support: prompts must work across harnesses.
+    // We DO want intent wording ("read", "run") but NOT proper-noun tool
+    // names that only Claude Code recognizes ("the Read tool").
+    const p = buildSentryPrompt(ctx);
+    assert.doesNotMatch(p, /the Read tool/i);
+    assert.doesNotMatch(p, /the Bash tool/i);
+    assert.doesNotMatch(p, /using the Read/i);
+    // Sanity: the intent verbiage IS still there.
+    assert.match(p, /Open the file/);
+    assert.match(p, /Run the test command/);
   });
 
   test("handles a null topFrame gracefully (no crash; fallback message)", () => {

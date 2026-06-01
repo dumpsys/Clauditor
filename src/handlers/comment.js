@@ -1,7 +1,7 @@
 import path from "path";
 import fs from "fs";
 import os from "os";
-import { runClaudeCode, runClaudeTriage } from "../services/claude.js";
+import { harness } from "../harnesses/index.js";
 import { replyToComment, replyToReview, getPullRequest } from "../services/github.js";
 import { gitOperations } from "../services/git.js";
 import { config } from "../config.js";
@@ -97,7 +97,7 @@ export async function handleComment(job) {
   // full flow rather than silently dropping the job.
   let triage;
   try {
-    triage = await runClaudeTriage(context);
+    triage = await harness.runTriage(context);
   } catch (err) {
     logger.warn(`Triage failed (${err.message}); proceeding to full flow`);
     triage = { skip: false, reason: "triage error — defaulted to proceed" };
@@ -116,7 +116,7 @@ export async function handleComment(job) {
     await gitOperations.clone(context.repoCloneUrl, workDir, context.branch);
 
     logger.info("Running Claude Code to evaluate review feedback...");
-    const result = await runClaudeCode(workDir, context);
+    const result = await harness.runCommentFix(workDir, context);
 
     if (!result.actionable) {
       // Stay silent on the PR — no comment, no noise. Just log for ourselves.
