@@ -3,7 +3,7 @@ import fs from "fs";
 import os from "os";
 import { config } from "../config.js";
 import { logger } from "../logger.js";
-import { runClaudeSentryFix } from "../services/claude.js";
+import { harness } from "../harnesses/index.js";
 import { gitOperations } from "../services/git.js";
 import {
   branchExists,
@@ -85,7 +85,7 @@ export async function handleSentryIssue(job) {
       },
     };
 
-    const result = await runClaudeSentryFix(workDir, claudeContext);
+    const result = await harness.runSentryFix(workDir, claudeContext);
 
     if (!result.actionable) {
       const reason = result.reason || "(no reason given)";

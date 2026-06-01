@@ -1,26 +1,23 @@
 /**
- * Prompt builders for the Claude Code integration.
+ * Prompt builders — harness-agnostic.
  *
- * Lives next to claude.js intentionally. The CLI plumbing (spawn, JSON
- * extraction, timeouts) and the prompt *content* iterate at very different
- * rhythms — the plumbing changes rarely; the prompts get tuned in response
- * to operator observations of how the model behaves. Splitting the files
- * makes prompt diffs easier to review without scrolling past the spawn
- * code, and keeps the prompt content in one obvious place.
+ * Previously these lived under `src/services/claudePrompts.js` and used
+ * Claude-Code-flavored tool names ("the Read tool", "the Bash tool"). They
+ * now live under `src/prompts/` so they can be consumed by any harness
+ * (Claude Code, Codex CLI, Antigravity CLI). Tool references are written
+ * in plain English ("read the file", "run the test command") rather than
+ * with proper-noun tool names — every modern coding agent understands the
+ * intent, and the harness adapter handles capability gating separately.
  *
  * Each builder is a pure function of its context object — no I/O, no
  * config reads beyond what's passed in. That keeps them trivially testable
- * (the test suite in test/services/claude.test.js asserts the rendered
- * text directly).
- *
- * Re-exported from claude.js for backwards compatibility with existing
- * imports.
+ * (the test suite asserts the rendered text directly).
  */
 
 /**
  * Cheap pre-flight triage for the PR-comment handler.
  *
- * Tells Claude: no codebase access, single-turn judgment, output {skip,
+ * Tells the agent: no codebase access, single-turn judgment, output {skip,
  * reason}. Used to short-circuit obviously non-actionable comments
  * (praise, questions, lgtm) before paying the cost of a clone + tool-using
  * run. The prompt is biased toward `skip: false` so genuine bugs aren't
@@ -69,15 +66,15 @@ Output ONLY this JSON object as the very last thing you write:
 }
 
 /**
- * Full comment-handler prompt — runs after triage. Claude reads the file,
- * decides whether the feedback is actionable, applies a minimal edit if
- * so, runs the test suite, and emits a JSON decision.
+ * Full comment-handler prompt — runs after triage. The agent reads the
+ * file, decides whether the feedback is actionable, applies a minimal edit
+ * if so, runs the test suite, and emits a JSON decision.
  *
  * Has an explicit "verify tests pass" step because an earlier prod
  * incident shipped code that broke CI; the rule is enforced in the
  * prompt rather than only in code review.
  */
-export function buildPrompt(context) {
+export function buildCommentPrompt(context) {
   const fileContext = context.filePath
     ? `**File being reviewed:** \`${context.filePath}\``
     : "**General PR review comment (not tied to a specific file)**";
@@ -105,7 +102,7 @@ ${context.commentBody}
 ${diffContext}
 
 **Step 1 — Decide if the feedback is actionable**
-- Read the relevant file(s) using the Read tool
+- Read the relevant file(s).
 - Evaluate critically: Is it a genuine improvement? Is it clear enough to act on?
 - If the feedback is vague, subjective, already implemented, or wrong: do NOT change anything and emit \`actionable: false\` (skip step 2 and 3).
 
@@ -124,7 +121,7 @@ a. Identify the test runner from the repo. Examples (in priority order):
    - \`.github/workflows/*.yml\` — read it to learn the actual CI test command and mirror it
    If multiple options exist, prefer the one CI uses.
 
-b. Run the test command using the Bash tool.
+b. Run the test command.
 
 c. Interpret the result:
    - **All tests pass** → proceed to Step 4 with \`actionable: true\`.
@@ -167,17 +164,83 @@ Remember: do all the thinking, editing, and test-running first. The JSON block i
 }
 
 /**
+ * Portable PR review prompt — Workflow B.
+ *
+ * Replaces the earlier `claude -p /review` shortcut so the review workflow
+ * works under any harness (Claude Code, Codex, Antigravity). The output
+ * is plain markdown suitable for posting as a PR review body (NOT a JSON
+ * decision — Workflow B always posts).
+ *
+ * Mimics the rough shape of a useful human review: a one-paragraph
+ * summary, then sections for what was done well, what might be wrong, and
+ * suggestions. Keeps the agent grounded by requiring it to actually read
+ * the diff (`git diff <base>...HEAD`) before commenting.
+ */
+export function buildReviewPrompt(context) {
+  return `
+You are an automated PR reviewer. A reviewer was requested on a pull request and your job is to produce a thoughtful review comment.
+
+**Repo:** ${context.owner}/${context.repoName}
+**PR #${context.prNumber}** — base \`${context.baseBranch}\` ← head \`${context.headBranch}\`
+**Title:** ${context.prTitle || "(no title)"}
+
+**Step 1 — Read the change**
+
+- Run \`git diff ${context.baseBranch}...HEAD\` to see what changed.
+- Run \`git log ${context.baseBranch}..HEAD --oneline\` to see the commit shape.
+- Read each modified file to understand the change in context (not just the diff hunk).
+- For non-trivial changes, also read the *callers* of the changed code — a tighter signature or renamed function affects consumers that aren't in the diff.
+
+**Step 2 — Evaluate**
+
+Look for:
+- **Correctness:** off-by-one, null/undefined access, race conditions, missing await, error swallowed, leaked resource
+- **Security:** SQL/command injection, XSS, hardcoded secrets, missing auth/authz check, unsafe deserialization
+- **Quality:** unclear naming, duplicated logic, dead code, missing tests for new behavior, broken existing tests
+- **Architecture fit:** does this change cohere with surrounding code conventions, or does it introduce inconsistency?
+
+Don't fabricate issues. Don't nitpick formatting if the repo has a formatter. If the change is genuinely fine, say so — empty reviews are noise, but so are forced-issue reviews.
+
+**Step 3 — Output a markdown review body**
+
+Write a PR review comment in markdown. Use this structure when there's enough material; collapse sections that are empty:
+
+\`\`\`markdown
+**Summary**
+
+<one paragraph: what the PR does and your overall take>
+
+**Issues** (only include if you found real ones)
+
+- <file:line> — <issue>. Why it matters: <one line>.
+
+**Suggestions** (optional improvements that aren't blocking)
+
+- <file:line> — <suggestion>.
+
+**Looks good**
+
+- <file or area you specifically verified>.
+\`\`\`
+
+Tone: direct, technical, peer-to-peer. Don't moralize. Reference specific file paths and line numbers (\`path/to/file.js:42\`) so reviewers can jump.
+
+Output ONLY the markdown review body — no preamble, no "Here's my review:", no closing remarks. The output of this run is posted verbatim to the PR.
+`.trim();
+}
+
+/**
  * Sentry crash-fix prompt — invoked from the Sentry webhook handler after
  * the source-map gate accepts an event.
  *
- * Centered on root-cause discipline. Earlier iterations had Claude
+ * Centered on root-cause discipline. Earlier iterations had the agent
  * "fixing" production crashes by wrapping the throw site in try/catch
  * (silent bug + lost Sentry signal), so the prompt now leads with an
  * explicit root-cause-not-symptom framing and walks through eight steps:
  * read, trace upstream, state the cause, decide fixability, fix at the
  * right layer (with an anti-pattern list), verify, self-check, emit JSON.
- * Test coverage in test/services/claude.test.js locks the methodology
- * into the prompt against future drift.
+ * Test coverage in test/harnesses/claude.test.js locks the methodology into
+ * the prompt against future drift.
  */
 export function buildSentryPrompt(context) {
   const s = context.sentry;
@@ -232,7 +295,7 @@ ${breadcrumbBlock}
 
 **Step 1 — Read the throw site and form a hypothesis**
 
-- Open the file referenced in the top frame with the Read tool. Read enough surrounding code to understand what the function is *supposed* to do, not just the line that crashed.
+- Open the file referenced in the top frame. Read enough surrounding code to understand what the function is *supposed* to do, not just the line that crashed.
 - Restate the failure in one plain sentence: *"X was supposed to be Y at line Z, but it was W."* If you can't say that yet, keep reading before editing anything.
 - Confirm the line still matches the source context Sentry showed above. If the file has drifted significantly since the release that crashed (\`${s.event.release || "?"}\`), the fix may no longer apply — say so and emit \`actionable: false\`.
 
