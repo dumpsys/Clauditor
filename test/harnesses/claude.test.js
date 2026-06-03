@@ -6,14 +6,19 @@ process.env.GITHUB_WEBHOOK_SECRET ??= "test-secret";
 process.env.GITHUB_BOT_USERNAME ??= "test-bot";
 
 const {
-  buildPrompt,
+  buildCommentPrompt,
   buildTriagePrompt,
   buildSentryPrompt,
-  parseClaudeOutput,
+  buildReviewPrompt,
+} = await import("../../src/prompts/index.js");
+const {
+  parseDecisionOutput: parseClaudeOutput,
   parseTriageOutput,
   parseSentryOutput,
   extractReviewText,
-} = await import("../../src/services/claude.js");
+} = await import("../../src/harnesses/claude.js");
+// Local alias to keep the existing test bodies unchanged after the rename.
+const buildPrompt = buildCommentPrompt;
 
 /** Wrap a model "result" payload the way --output-format json does. */
 function outerJson(resultText) {
@@ -316,6 +321,19 @@ describe("buildSentryPrompt", () => {
   test("instructs root_cause to name the underlying cause, not the symptom", () => {
     const p = buildSentryPrompt(ctx);
     assert.match(p, /NOT a restatement of the symptom/i);
+  });
+
+  test("uses generic 'read the file' wording, not Claude-Code-specific tool names", () => {
+    // Phase 1 of multi-CLI support: prompts must work across harnesses.
+    // We DO want intent wording ("read", "run") but NOT proper-noun tool
+    // names that only Claude Code recognizes ("the Read tool").
+    const p = buildSentryPrompt(ctx);
+    assert.doesNotMatch(p, /the Read tool/i);
+    assert.doesNotMatch(p, /the Bash tool/i);
+    assert.doesNotMatch(p, /using the Read/i);
+    // Sanity: the intent verbiage IS still there.
+    assert.match(p, /Open the file/);
+    assert.match(p, /Run the test command/);
   });
 
   test("handles a null topFrame gracefully (no crash; fallback message)", () => {

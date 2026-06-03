@@ -2,24 +2,31 @@ import { spawn } from "child_process";
 import os from "os";
 import { config } from "../config.js";
 import { logger } from "../logger.js";
-// Prompt builders live in a sibling file so prompt iteration (which happens
-// often, in response to operator observations) doesn't clutter the diff of
-// the CLI plumbing (which iterates rarely).
 import {
-  buildPrompt,
+  buildCommentPrompt,
   buildTriagePrompt,
+  buildReviewPrompt,
   buildSentryPrompt,
-} from "./claudePrompts.js";
+} from "../prompts/index.js";
 
 /**
- * Invoke Claude Code in headless mode (-p flag) to:
- * 1. Evaluate if the review feedback is valid and actionable
- * 2. If so, apply the necessary code changes
+ * Claude Code harness — implementation of the four harness entry points
+ * (runCommentFix / runTriage / runReview / runSentryFix) on top of the
+ * `claude` CLI in headless mode (`-p` flag).
  *
- * Returns: { actionable: bool, reason: string, summary: string, files_modified: string[] }
+ * Sister harnesses (Codex, Antigravity) will live next to this file and
+ * implement the same four method signatures. Selection happens via
+ * src/harnesses/index.js based on the HARNESS env var.
  */
-export async function runClaudeCode(workDir, context) {
-  const prompt = buildPrompt(context);
+
+/**
+ * Run the comment-handler workflow: evaluate review feedback, apply
+ * changes if actionable, verify tests, return a JSON decision.
+ *
+ * Returns: { actionable, reason, summary, files_modified, tests_run, tests_passed }
+ */
+export async function runCommentFix(workDir, context) {
+  const prompt = buildCommentPrompt(context);
 
   logger.info(`Running: claude -p --output-format json [prompt via stdin]`);
 
@@ -34,18 +41,18 @@ export async function runClaudeCode(workDir, context) {
   ];
 
   const output = await spawnClaude(args, prompt, workDir, config.claudeTimeoutMs);
-  return parseClaudeOutput(output);
+  return parseDecisionOutput(output);
 }
 
 /**
- * Cheap pre-flight triage: ask Claude (no tools, no clone) whether the
+ * Cheap pre-flight triage: ask the model (no tools, no clone) whether the
  * comment plausibly requires a code change. Returns { skip, reason }.
  *
- * We bias toward `skip: false` — when in doubt, proceed to the full flow.
+ * Bias toward `skip: false` — when in doubt, proceed to the full flow.
  * Used to short-circuit the expensive clone + tool-using run for
- * obviously-non-actionable feedback (praise, questions, lgtm, etc.).
+ * obviously non-actionable feedback (praise, questions, lgtm, etc.).
  */
-export async function runClaudeTriage(context) {
+export async function runTriage(context) {
   const prompt = buildTriagePrompt(context);
 
   const args = [
@@ -68,51 +75,42 @@ export async function runClaudeTriage(context) {
 }
 
 /**
- * Run the built-in `/review` slash command in headless mode and return
- * Claude's review text (suitable for posting as a PR review body).
+ * Run the portable review prompt — replaces the earlier `claude -p /review`
+ * shortcut so the review workflow works under any harness. Returns the
+ * markdown review body (NOT a JSON decision — Workflow B always posts).
  *
- * Per https://www.linkedin.com/posts/markshust_til-you-can-run-claude-code-slash-commands-share-7407042756113489939-5pfS/
- * `claude -p "/review"` triggers the built-in review slash command in headless mode.
+ * The /review slash command was Claude-Code-specific; bringing our own
+ * prompt also means we can tune the review style and the same prompt is
+ * portable to Codex/Antigravity once those adapters land.
  */
-export async function runClaudeReview(workDir, context) {
-  // Slash command goes via the prompt argument (not stdin) — that's how
-  // the CLI parses it as a command rather than free-form text.
+export async function runReview(workDir, context) {
+  const prompt = buildReviewPrompt(context);
+
   const args = [
-    "-p", "/review",
+    "-p",
     "--output-format", "json",
     "--allowedTools", "Read,Glob,Grep,Bash",
     "--max-turns", "50",
   ];
 
   logger.info(
-    `Running: claude -p /review (PR #${context.prNumber}, ${context.baseBranch}...${context.headBranch}, ` +
-    `timeout ${Math.round(config.claudeReviewTimeoutMs / 1000)}s)`
+    `Running: claude -p (portable review prompt) on PR #${context.prNumber}, ` +
+    `${context.baseBranch}...${context.headBranch}, ` +
+    `timeout ${Math.round(config.claudeReviewTimeoutMs / 1000)}s`
   );
 
-  const output = await spawnClaude(args, /* stdinPrompt */ null, workDir, config.claudeReviewTimeoutMs);
+  const output = await spawnClaude(args, prompt, workDir, config.claudeReviewTimeoutMs);
   return extractReviewText(output);
 }
 
-function extractReviewText(rawOutput) {
-  // --output-format json wraps as { type: "result", result: "<text>", ... }
-  try {
-    const outer = JSON.parse(rawOutput);
-    if (typeof outer.result === "string") return outer.result;
-  } catch {
-    // Not JSON — fall through and return raw.
-  }
-  return rawOutput;
-}
-
 /**
- * Run Claude Code with a Sentry-specific prompt: given a stack trace +
- * surrounding source context, locate the bug in the repo and propose a
- * minimal fix. Mirrors `runClaudeCode` but uses its own timeout and prompt.
+ * Run the Sentry crash-fix workflow: given a stack trace + surrounding
+ * source context, locate the bug in the repo and propose a minimal fix.
  *
  * Returns the parsed JSON decision with an extra `confidence` field
  * ("high" | "medium" | "low") that the handler uses to decide PR draft state.
  */
-export async function runClaudeSentryFix(workDir, context) {
+export async function runSentryFix(workDir, context) {
   const prompt = buildSentryPrompt(context);
 
   logger.info(`Running: claude -p (Sentry fix prompt) on issue ${context.sentry.issueId}`);
@@ -128,8 +126,21 @@ export async function runClaudeSentryFix(workDir, context) {
   return parseSentryOutput(output);
 }
 
+// ─── internals ───────────────────────────────────────────────────────────
+
+function extractReviewText(rawOutput) {
+  // --output-format json wraps as { type: "result", result: "<text>", ... }
+  try {
+    const outer = JSON.parse(rawOutput);
+    if (typeof outer.result === "string") return outer.result;
+  } catch {
+    // Not JSON — fall through and return raw.
+  }
+  return rawOutput;
+}
+
 function parseSentryOutput(rawOutput) {
-  // Reuse the same extraction pattern as parseClaudeOutput, but require a
+  // Reuse the same extraction pattern as parseDecisionOutput, but require a
   // confidence field so downstream draft-state logic doesn't break.
   let text = rawOutput;
   try {
@@ -261,7 +272,7 @@ function spawnClaude(args, prompt, cwd, timeoutMs = config.claudeTimeoutMs) {
  * Extract the JSON decision block from Claude's output.
  * `--output-format json` wraps the model output as { type: "result", result: "..." }.
  */
-function parseClaudeOutput(rawOutput) {
+function parseDecisionOutput(rawOutput) {
   let text = rawOutput;
 
   try {
@@ -295,14 +306,11 @@ function parseClaudeOutput(rawOutput) {
 }
 
 // ─── Internals exposed for unit testing ──────────────────────────────────
-// Not part of the public service API — production callers go through the
-// `runClaude*` functions above. Tests import these directly so the pure
-// parsers and prompt builders can be exercised without spawning the CLI.
+// Tests import these directly so the pure parsers can be exercised without
+// spawning the CLI. Not part of the harness public API — production callers
+// go through the four runX functions above.
 export {
-  buildPrompt,
-  buildTriagePrompt,
-  buildSentryPrompt,
-  parseClaudeOutput,
+  parseDecisionOutput,
   parseTriageOutput,
   parseSentryOutput,
   extractReviewText,
