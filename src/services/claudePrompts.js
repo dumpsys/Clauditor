@@ -92,10 +92,11 @@ export function buildReviewCommand(context) {
 
   const branch = context.headBranch || context.branch;
   if (branch) {
+    const quotedBranch = `'${String(branch).replace(/'/g, `'\\''`)}'`;
     return (
-      `/review the open pull request whose head branch is '${branch}'. ` +
+      `/review the open pull request whose head branch is ${quotedBranch}. ` +
       `The PR number was not provided, so resolve it from the branch name first ` +
-      `by running: gh pr list --head '${branch}' --state open --json number --jq '.[0].number' ` +
+      `by running: gh pr list --head ${quotedBranch} --state open --json number --jq '.[0].number' ` +
       `— then review that PR. Do not guess a PR number from the checkout.`
     );
   }
