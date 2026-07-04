@@ -9,6 +9,7 @@ const {
   buildPrompt,
   buildTriagePrompt,
   buildSentryPrompt,
+  buildReviewCommand,
   parseClaudeOutput,
   parseTriageOutput,
   parseSentryOutput,
@@ -133,6 +134,40 @@ describe("extractReviewText", () => {
   test("returns raw input when JSON lacks a string 'result' field", () => {
     const wrapped = JSON.stringify({ type: "other", result: { not: "string" } });
     assert.equal(extractReviewText(wrapped), wrapped);
+  });
+});
+
+describe("buildReviewCommand", () => {
+  test("passes the PR number explicitly when the context has one", () => {
+    assert.equal(buildReviewCommand({ prNumber: 42 }), "/review 42");
+  });
+
+  test("accepts a numeric-string PR number", () => {
+    assert.equal(buildReviewCommand({ prNumber: "42" }), "/review 42");
+  });
+
+  test("falls back to head-branch resolution when no PR number is present", () => {
+    const cmd = buildReviewCommand({ headBranch: "feature/login" });
+    assert.match(cmd, /head branch is 'feature\/login'/);
+    assert.match(cmd, /gh pr list --head 'feature\/login'/);
+    assert.match(cmd, /Do not guess/);
+  });
+
+  test("uses context.branch when headBranch is absent", () => {
+    const cmd = buildReviewCommand({ branch: "fix/bug" });
+    assert.match(cmd, /gh pr list --head 'fix\/bug'/);
+  });
+  test("shell-escapes branch names containing single quotes", () => {
+    const cmd = buildReviewCommand({ headBranch: "feat'ure" });
+    assert.match(cmd, /gh pr list --head 'feat'\\''ure'/);
+  });
+  test("ignores non-positive / non-integer PR numbers and uses the branch", () => {
+    assert.match(buildReviewCommand({ prNumber: 0, headBranch: "b" }), /gh pr list/);
+    assert.match(buildReviewCommand({ prNumber: NaN, headBranch: "b" }), /gh pr list/);
+  });
+
+  test("emits a bare /review when neither a number nor a branch is available", () => {
+    assert.equal(buildReviewCommand({}), "/review");
   });
 });
 

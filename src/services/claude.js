@@ -9,7 +9,24 @@ import {
   buildPrompt,
   buildTriagePrompt,
   buildSentryPrompt,
+  buildReviewCommand,
 } from "./claudePrompts.js";
+
+// Load ONLY the operator's own (user-scoped) settings — never the cloned
+// repo's `project`/`local` settings.
+//
+// Every runClaude* flow below spawns the CLI with cwd set to a throwaway
+// clone of a (possibly external) PR / Sentry branch. A repo can ship a
+// `.claude/settings.json` carrying permission allow-lists, hooks, and MCP
+// servers; honoring those from untrusted code would let a malicious PR run
+// arbitrary commands through our bot. Claude already refuses to load them
+// because the temp workspace isn't trusted — emitting the noisy
+//   "Ignoring N permissions.allow entries … this workspace has not been trusted"
+// warning on stderr for every run. Passing `--setting-sources user` makes
+// that intent explicit: there are no project settings to ignore, so the
+// warning disappears, and our per-call `--allowedTools` stays the single
+// source of truth for what the agent may do.
+const SETTING_SOURCES = ["--setting-sources", "user"];
 
 /**
  * Invoke Claude Code in headless mode (-p flag) to:
@@ -26,6 +43,7 @@ export async function runClaudeCode(workDir, context) {
   const args = [
     "-p",
     "--output-format", "json",
+    ...SETTING_SOURCES,
     "--allowedTools", "Read,Edit,Write,Bash,Glob,Grep",
     // Higher than the original 10 — the test-verify-and-fix loop
     // (edit → run tests → fix failures → re-run) can take several turns
@@ -51,6 +69,7 @@ export async function runClaudeTriage(context) {
   const args = [
     "-p",
     "--output-format", "json",
+    ...SETTING_SOURCES,
     // No tools — model judgment only. Can't read files, run commands, etc.
     "--allowedTools", "",
     // Single turn is enough; no tool loop needed.
@@ -76,16 +95,22 @@ export async function runClaudeTriage(context) {
  */
 export async function runClaudeReview(workDir, context) {
   // Slash command goes via the prompt argument (not stdin) — that's how
-  // the CLI parses it as a command rather than free-form text.
+  // the CLI parses it as a command rather than free-form text. We pass the
+  // PR number explicitly (or a branch-resolution instruction when the
+  // context lacks one) so `/review` never has to guess which PR the
+  // throwaway clone corresponds to.
+  const reviewCommand = buildReviewCommand(context);
   const args = [
-    "-p", "/review",
+    "-p", reviewCommand,
     "--output-format", "json",
+    ...SETTING_SOURCES,
     "--allowedTools", "Read,Glob,Grep,Bash",
     "--max-turns", "50",
   ];
 
   logger.info(
-    `Running: claude -p /review (PR #${context.prNumber}, ${context.baseBranch}...${context.headBranch}, ` +
+    `Running: claude -p "${reviewCommand}" (PR #${context.prNumber ?? "unknown"}, ` +
+    `${context.baseBranch}...${context.headBranch}, ` +
     `timeout ${Math.round(config.claudeReviewTimeoutMs / 1000)}s)`
   );
 
@@ -120,6 +145,7 @@ export async function runClaudeSentryFix(workDir, context) {
   const args = [
     "-p",
     "--output-format", "json",
+    ...SETTING_SOURCES,
     "--allowedTools", "Read,Edit,Write,Bash,Glob,Grep",
     "--max-turns", "30",
   ];
@@ -302,6 +328,7 @@ export {
   buildPrompt,
   buildTriagePrompt,
   buildSentryPrompt,
+  buildReviewCommand,
   parseClaudeOutput,
   parseTriageOutput,
   parseSentryOutput,

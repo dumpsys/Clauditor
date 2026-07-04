@@ -69,6 +69,42 @@ Output ONLY this JSON object as the very last thing you write:
 }
 
 /**
+ * Build the argument passed to the built-in `/review` slash command.
+ *
+ * `/review` reviews "the current PR", but in our headless flow we clone into
+ * a throwaway temp dir that has no ambient PR association — so a bare
+ * `/review` forces Claude to *guess* which PR the checkout corresponds to,
+ * and it sometimes reviews the wrong one (or none). We remove the guess:
+ *
+ * - When the webhook context carries a PR number, pass it explicitly:
+ *   `/review <n>`. This is the unambiguous, documented usage.
+ * - When the context has NO PR number (e.g. an event shape that didn't
+ *   include one), fall back to the head branch name and tell Claude how to
+ *   resolve the PR from it via `gh` — so it derives the right number instead
+ *   of guessing from the checkout.
+ * - As a last resort (no number, no branch), emit a bare `/review`.
+ */
+export function buildReviewCommand(context) {
+  const prNumber = Number(context.prNumber);
+  if (Number.isInteger(prNumber) && prNumber > 0) {
+    return `/review ${prNumber}`;
+  }
+
+  const branch = context.headBranch || context.branch;
+  if (branch) {
+    const quotedBranch = `'${String(branch).replace(/'/g, `'\\''`)}'`;
+    return (
+      `/review the open pull request whose head branch is ${quotedBranch}. ` +
+      `The PR number was not provided, so resolve it from the branch name first ` +
+      `by running: gh pr list --head ${quotedBranch} --state open --json number --jq '.[0].number' ` +
+      `— then review that PR. Do not guess a PR number from the checkout.`
+    );
+  }
+
+  return "/review";
+}
+
+/**
  * Full comment-handler prompt — runs after triage. Claude reads the file,
  * decides whether the feedback is actionable, applies a minimal edit if
  * so, runs the test suite, and emits a JSON decision.
