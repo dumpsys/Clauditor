@@ -157,7 +157,10 @@ describe("buildReviewCommand", () => {
     const cmd = buildReviewCommand({ branch: "fix/bug" });
     assert.match(cmd, /gh pr list --head 'fix\/bug'/);
   });
-
+  test("shell-escapes branch names containing single quotes", () => {
+    const cmd = buildReviewCommand({ headBranch: "feat'ure" });
+    assert.match(cmd, /gh pr list --head 'feat'\\''ure'/);
+  });
   test("ignores non-positive / non-integer PR numbers and uses the branch", () => {
     assert.match(buildReviewCommand({ prNumber: 0, headBranch: "b" }), /gh pr list/);
     assert.match(buildReviewCommand({ prNumber: NaN, headBranch: "b" }), /gh pr list/);
