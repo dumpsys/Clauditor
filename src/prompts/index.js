@@ -174,7 +174,7 @@ Remember: do all the thinking, editing, and test-running first. The JSON block i
  * Mimics the rough shape of a useful human review: a one-paragraph
  * summary, then sections for what was done well, what might be wrong, and
  * suggestions. Keeps the agent grounded by requiring it to actually read
- * the diff (`git diff <base>...HEAD`) before commenting.
+ * the diff (`git diff refs/clauditor/base...HEAD`) before commenting.
  */
 export function buildReviewPrompt(context) {
   return `
@@ -186,8 +186,8 @@ You are an automated PR reviewer. A reviewer was requested on a pull request and
 
 **Step 1 — Read the change**
 
-- Run \`git diff ${context.baseBranch}...HEAD\` to see what changed.
-- Run \`git log ${context.baseBranch}..HEAD --oneline\` to see the commit shape.
+- Run \`git diff refs/clauditor/base...HEAD\` to see what changed.
+- Run \`git log refs/clauditor/base..HEAD --oneline\` to see the commit shape.
 - Read each modified file to understand the change in context (not just the diff hunk).
 - For non-trivial changes, also read the *callers* of the changed code — a tighter signature or renamed function affects consumers that aren't in the diff.
 

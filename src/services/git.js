@@ -40,9 +40,8 @@ export const gitOperations = {
   },
 
   /**
-   * Full clone (no --depth, no --single-branch) so Claude can run
-   * `git diff origin/<base>...HEAD` locally during a review.
-   * Checks out the head branch.
+   * Full clone (no --depth, no --single-branch) that checks out the head
+   * branch and stores the base branch at `refs/clauditor/base` for review.
    */
   async cloneForReview(repoUrl, workDir, headBranch, baseBranch) {
     logger.info(`Cloning '${headBranch}' (with base '${baseBranch}' available)...`);
@@ -55,10 +54,15 @@ export const gitOperations = {
       workDir,
     ], { cwd: "/" });
 
-    // Make sure the base branch ref exists locally as `origin/<baseBranch>`.
-    // A standard clone (without --single-branch) already fetches all remote
-    // refs, but we run an explicit fetch in case the default behavior changed.
-    await run("git", ["fetch", "origin", baseBranch], { cwd: workDir });
+    // Resolve the untrusted branch name through argv (never a shell) and store
+    // its commit under one fixed ref. Review prompts can safely use this ref
+    // without interpolating a branch name into a command, and unlike a remote
+    // tracking ref it is guaranteed to exist after the fetch.
+    await run("git", [
+      "fetch",
+      "origin",
+      `refs/heads/${baseBranch}:refs/clauditor/base`,
+    ], { cwd: workDir });
 
     await run("git", ["config", "user.email", config.gitEmail], { cwd: workDir });
     await run("git", ["config", "user.name", config.gitName], { cwd: workDir });

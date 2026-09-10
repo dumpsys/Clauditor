@@ -26,10 +26,21 @@ describe("buildReviewPrompt", () => {
     assert.match(p, /Add dark mode toggle/);
   });
 
-  test("instructs the agent to run `git diff` against the base branch", () => {
+  test("uses the fixed base ref for git commands", () => {
     const p = buildReviewPrompt(ctx);
-    assert.match(p, /git diff main\.\.\.HEAD/);
-    assert.match(p, /git log main\.\.HEAD/);
+    assert.match(p, /git diff refs\/clauditor\/base\.\.\.HEAD/);
+    assert.match(p, /git log refs\/clauditor\/base\.\.HEAD/);
+  });
+
+  test("does not interpolate a crafted branch name into git commands", () => {
+    const p = buildReviewPrompt({
+      ...ctx,
+      baseBranch: "main;printf${IFS}INJECTED",
+    });
+
+    // The branch remains useful as display metadata but is never executable.
+    assert.match(p, /base `main;printf\$\{IFS\}INJECTED`/);
+    assert.doesNotMatch(p, /git (?:diff|log)[^\n]*INJECTED/);
   });
 
   test("covers the four review dimensions (correctness, security, quality, fit)", () => {
