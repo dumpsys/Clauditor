@@ -86,7 +86,7 @@ export async function postIssueComment(issueId, text) {
  *     fields (`inApp`, `lineNo`, `colNo`, `absPath`) and source context as
  *     a single `context: [[lineNo, code], ...]` array.
  *
- * `normalizeFrame` returns a canonical frame Claude/the gate can consume
+ * `normalizeFrame` returns a canonical frame the harness/gate can consume
  * regardless of source. Accepts either shape; falls through cleanly when
  * fields are missing.
  */
@@ -162,7 +162,7 @@ function frameHasContext(frame) {
  * one closest to where the throw happened. **Preference order:**
  *
  *   1. Deepest in_app frame that ALSO has resolved source context. This is
- *      what we actually want — a frame Claude can read and reason about.
+ *      what we actually want — a frame the harness can read and reason about.
  *   2. Fallback: deepest in_app frame even without context, so callers like
  *      `hasResolvedSourceMaps` can still report what they saw.
  *
@@ -254,7 +254,7 @@ export function describeSourceMapGate(event) {
 }
 
 /**
- * Heuristic: did Sentry resolve source maps for a frame Claude can use?
+ * Heuristic: did Sentry resolve source maps for a frame the harness can use?
  *
  * Returns true iff the frame chosen by `topInAppFrame` looks like real
  * user source (not a bundle / Hermes internal) AND has the context_line +
@@ -286,7 +286,7 @@ export function issueIdFromPayload(payload) {
 }
 
 /**
- * Build a compact context object for the handler / Claude prompt.
+ * Build a compact context object for the handler prompt.
  * Extracts only the fields we actually use — keeps the prompt focused.
  */
 export function summarizeEvent(event, issue) {

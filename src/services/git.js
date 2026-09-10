@@ -32,11 +32,6 @@ export const gitOperations = {
     // Configure git identity for commits
     await run("git", ["config", "user.email", config.gitEmail], { cwd: workDir });
     await run("git", ["config", "user.name", config.gitName], { cwd: workDir });
-
-    // Persist the auth header in this clone's local config so subsequent
-    // pushes also authenticate without exposing the token in the URL.
-    const basic = Buffer.from(`x-access-token:${config.githubToken}`).toString("base64");
-    await run("git", ["config", "http.extraHeader", `Authorization: Basic ${basic}`], { cwd: workDir });
   },
 
   /**
@@ -59,6 +54,7 @@ export const gitOperations = {
     // without interpolating a branch name into a command, and unlike a remote
     // tracking ref it is guaranteed to exist after the fetch.
     await run("git", [
+      ...authHeaderArgs(),
       "fetch",
       "origin",
       `refs/heads/${baseBranch}:refs/clauditor/base`,
@@ -66,9 +62,6 @@ export const gitOperations = {
 
     await run("git", ["config", "user.email", config.gitEmail], { cwd: workDir });
     await run("git", ["config", "user.name", config.gitName], { cwd: workDir });
-
-    const basic = Buffer.from(`x-access-token:${config.githubToken}`).toString("base64");
-    await run("git", ["config", "http.extraHeader", `Authorization: Basic ${basic}`], { cwd: workDir });
   },
 
   /**
@@ -93,9 +86,6 @@ export const gitOperations = {
 
     await run("git", ["config", "user.email", config.gitEmail], { cwd: workDir });
     await run("git", ["config", "user.name", config.gitName], { cwd: workDir });
-
-    const basic = Buffer.from(`x-access-token:${config.githubToken}`).toString("base64");
-    await run("git", ["config", "http.extraHeader", `Authorization: Basic ${basic}`], { cwd: workDir });
   },
 
   /**
@@ -105,7 +95,7 @@ export const gitOperations = {
    * Most callers won't need this; commitAndPush handles the common case.
    */
   async pushNewBranch(workDir, branch) {
-    await run("git", ["push", "-u", "origin", branch], { cwd: workDir });
+    await run("git", [...authHeaderArgs(), "push", "-u", "origin", branch], { cwd: workDir });
   },
 
   /**
@@ -114,14 +104,14 @@ export const gitOperations = {
   async commitAndPush(workDir, branch, message) {
     const status = await runOutput("git", ["status", "--porcelain"], { cwd: workDir });
     if (!status.trim()) {
-      throw new Error("Claude Code made no file changes despite marking feedback as actionable");
+      throw new Error("Harness made no file changes despite marking feedback as actionable");
     }
 
     logger.info(`Files changed:\n${status}`);
 
     await run("git", ["add", "-A"], { cwd: workDir });
     await run("git", ["commit", "-m", message], { cwd: workDir });
-    await run("git", ["push", "origin", branch], { cwd: workDir });
+    await run("git", [...authHeaderArgs(), "push", "origin", branch], { cwd: workDir });
 
     const sha = (await runOutput("git", ["rev-parse", "HEAD"], { cwd: workDir })).trim();
     logger.info(`Pushed commit ${sha} to ${branch}`);

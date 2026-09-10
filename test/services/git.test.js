@@ -43,6 +43,10 @@ test("cloneForReview creates the fixed base ref used by review prompts", async (
 
     assert.equal(await git(clone, "rev-parse", "refs/clauditor/base"), baseSha);
     assert.equal(await git(clone, "diff", "--name-only", "refs/clauditor/base...HEAD"), "file.txt");
+    await assert.rejects(
+      () => git(clone, "config", "--get", "http.extraHeader"),
+      /Command failed/,
+    );
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }

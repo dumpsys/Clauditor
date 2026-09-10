@@ -54,7 +54,7 @@ async function buildContext(job) {
 
 /**
  * Remove the trigger phrase from a comment body so it doesn't pollute the
- * Claude prompt or the commit message. Case-insensitive match, collapses
+ * harness prompt or the commit message. Case-insensitive match, collapses
  * resulting whitespace.
  */
 function stripTriggerPhrase(body, phrase) {
@@ -115,19 +115,19 @@ export async function handleComment(job) {
     logger.info(`Cloning ${context.repoFullName} into ${workDir}`);
     await gitOperations.clone(context.repoCloneUrl, workDir, context.branch);
 
-    logger.info("Running Claude Code to evaluate review feedback...");
+    logger.info(`Running ${harness.displayName} to evaluate review feedback...`);
     const result = await harness.runCommentFix(workDir, context);
 
     if (!result.actionable) {
       // Stay silent on the PR — no comment, no noise. Just log for ourselves.
       logger.info(
-        `Skipping reply: Claude decided feedback is not actionable. ` +
+        `Skipping reply: ${harness.displayName} decided feedback is not actionable. ` +
         `Reason: ${result.reason || "(no reason given)"}`
       );
       return;
     }
 
-    logger.info("Committing and pushing Claude's changes...");
+    logger.info(`Committing and pushing ${harness.displayName}'s changes...`);
     const commitSha = await gitOperations.commitAndPush(
       workDir,
       context.branch,
@@ -152,7 +152,7 @@ async function postReply(context, body) {
 }
 
 /**
- * Compose a commit message that describes WHAT changed (from Claude's
+ * Compose a commit message that describes WHAT changed (from the harness
  * `result.summary`) rather than quoting the reviewer's feedback. The link
  * to the original comment goes in a trailer so the change is still traceable.
  */
@@ -173,7 +173,7 @@ function buildSuccessReply(context, result, commitSha) {
     ? `[original comment](${context.commentUrl})`
     : "the review feedback";
   return [
-    `✅ **Addressed by Claude Code** (commit [\`${commitSha.substring(0, 7)}\`](${repoUrl}/commit/${commitSha}))`,
+    `✅ **Addressed by ${harness.displayName}** (commit [\`${commitSha.substring(0, 7)}\`](${repoUrl}/commit/${commitSha}))`,
     "",
     `Re: ${commentLink}`,
     "",
@@ -182,4 +182,3 @@ function buildSuccessReply(context, result, commitSha) {
     `_This change was applied automatically. Please review the commit to confirm it meets your expectations._`,
   ].join("\n");
 }
-

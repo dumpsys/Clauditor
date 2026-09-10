@@ -8,8 +8,7 @@
  *   - runReview(workDir, context)     → markdown review body (Workflow B)
  *   - runSentryFix(workDir, context)  → JSON decision w/ confidence (Workflow C)
  *
- * Phase 1 ships with only the Claude Code harness. Phase 2 will add Codex
- * (using `codex exec --output-schema`), Phase 3 will add Antigravity once
+ * Claude Code and Codex are supported. Antigravity remains deferred until
  * its headless-auth story settles. See docs/multi-cli-assessment.md.
  *
  * The `HARNESS` env var picks which adapter to use (default `claude`).
@@ -17,9 +16,11 @@
  */
 
 import * as claudeHarness from "./claude.js";
+import * as codexHarness from "./codex.js";
 
 const REGISTRY = {
   claude: claudeHarness,
+  codex: codexHarness,
 };
 
 const HARNESS_NAME = (process.env.HARNESS || "claude").trim().toLowerCase();
@@ -34,12 +35,12 @@ export const harness = (() => {
   if (!impl) {
     const supported = Object.keys(REGISTRY).join(", ");
     throw new Error(
-      `Unknown HARNESS="${HARNESS_NAME}". Supported: ${supported}. ` +
-      `(Codex / Antigravity adapters land in later phases — see docs/multi-cli-assessment.md.)`,
+      `Unknown HARNESS="${HARNESS_NAME}". Supported: ${supported}.`,
     );
   }
   return {
     name: HARNESS_NAME,
+    displayName: impl.displayName || HARNESS_NAME,
     runCommentFix: impl.runCommentFix,
     runTriage: impl.runTriage,
     runReview: impl.runReview,

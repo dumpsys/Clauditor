@@ -1,13 +1,25 @@
 # Multi-CLI Support — Assessment
 
 **Branch:** `research/multi-cli-support`
+**Last verified:** 2026-09-10 against OpenAI Codex CLI 0.154.0 and the current official non-interactive-mode documentation.
 **Question:** Can Clauditor support harnesses other than Claude Code — specifically OpenAI's Codex CLI (`codex exec`) and Google's Antigravity CLI (`agy`) — so operators who prefer those tools can adopt the workflow?
 
-**Short answer:** Yes, feasible. The abstraction is natural (every harness has a `headless prompt → JSON decision → file edits → tests` shape) and one of the three (Codex via `--output-schema`) is actually a *cleaner* fit for structured output than what we do today. The real work is (a) writing tool-agnostic prompt text, (b) replacing our `claude -p /review` shortcut with a portable review prompt, and (c) maintaining N adapter parsers as each CLI evolves. Rough scope: **3–5 focused days** for Claude + Codex, +0.5 day for Antigravity.
+The Codex sections were revalidated for this implementation. The Antigravity
+notes remain from the original assessment and must be revalidated before that
+adapter is implemented.
+
+**Short answer:** Yes. Claude Code and Codex CLI are now implemented behind one harness boundary. Codex uses `--output-schema` for structured decisions, while reviews use a shared portable prompt. Antigravity remains a future adapter.
+
+### Implementation status
+
+- Portable foundation: complete (`src/harnesses/`, generic prompts, portable review workflow).
+- Codex adapter: complete (`HARNESS=codex`, schema-constrained decisions, explicit sandboxes, isolated configuration, regression tests).
+- Antigravity adapter: still deferred pending a stable headless-auth story.
+- Important CLI change since the original assessment: `--ask-for-approval never` is no longer present in Codex CLI 0.154.0. The adapter uses explicit sandbox modes and does not opt into `--approve-for-me`.
 
 ---
 
-## 1. What's Claude-specific today
+## 1. What was Claude-specific before the portable foundation
 
 Audit of every line that assumes Claude Code (not language-specific things like JS/TS in the Sentry prompt, which are user-codebase choices):
 
@@ -49,25 +61,32 @@ What is **already** harness-agnostic (good news):
 
 | Aspect | Detail |
 |---|---|
-| Headless invocation | `codex exec "<prompt>"` — dedicated non-interactive subcommand (separate from interactive TUI) |
-| Structured output | **Three options:** `--json` for a JSONL event stream; `-o/--output-last-message <path>` for final message to file; `--output-schema <schema.json>` to *enforce* a JSON Schema on the final output ([docs](https://developers.openai.com/codex/noninteractive)) |
-| Tool gating | Sandbox-based: `--sandbox workspace-write` (read + edit + run inside cwd); `--sandbox read-only`; `--sandbox danger-full-access`. Plus `--ask-for-approval never \| on-request \| untrusted` |
+| Headless invocation | `codex exec "<prompt>"` or prompt via stdin — dedicated non-interactive subcommand |
+| Structured output | `stdout` contains the final agent message; `--json` switches to JSONL events; `-o/--output-last-message` also writes the final message to a file; `--output-schema <schema.json>` constrains the final response ([docs](https://learn.chatgpt.com/docs/non-interactive-mode)) |
+| Tool gating | Sandbox-based: `--sandbox read-only`, `workspace-write`, or `danger-full-access`. CLI 0.154.0 has no `--ask-for-approval never`; `--approve-for-me` is an opt-in that Clauditor deliberately does not use. |
 | Iteration bound | No explicit max-turns; relies on model self-termination + shell timeout |
-| Slash commands | Yes ([docs](https://developers.openai.com/codex/cli/slash-commands)) — TUI-leaning; no documented `/review` equivalent we could reuse for free |
-| Auth | `OPENAI_API_KEY` env var or `codex login` |
-| Error reporting | Non-zero exit + stderr; structured if `--json` |
+| Configuration isolation | `--ephemeral --ignore-user-config --ignore-rules`; Clauditor also applies a restricted shell-environment policy so child commands do not inherit token/secret/key variables |
+| Auth | Saved `codex login` authentication, `CODEX_API_KEY`, `CODEX_ACCESS_TOKEN`, or workload identity (deployment-dependent) |
+| Error reporting | Non-zero exit + progress/diagnostics on stderr; structured events are available with `--json` |
 
-**The `--output-schema` flag is a feature we don't currently exploit.** Codex will *guarantee* the final stdout output conforms to a supplied JSON Schema — meaning we get parse-safe decisions without prompt-instruction-and-pray. For our `{actionable, confidence, summary, files_modified, root_cause, ...}` shape this would eliminate an entire class of "Claude emitted prose around the JSON" parse-failure cases.
+**The implementation uses `--output-schema`.** Codex constrains the final stdout response to the workflow's JSON Schema, eliminating the fenced-block extraction needed by the Claude adapter.
 
-The typical headless invocation for our use case:
+The implemented headless shape is:
 ```bash
 codex exec \
+  --ephemeral \
+  --ignore-user-config \
+  --ignore-rules \
   --sandbox workspace-write \
-  --ask-for-approval never \
+  -c 'shell_environment_policy.inherit="core"' \
+  -c shell_environment_policy.ignore_default_excludes=false \
   --output-schema /tmp/decision.schema.json \
-  -o /tmp/last.json \
-  "<prompt>"
+  -
 ```
+
+The prompt is sent on stdin. Review-only runs use `--sandbox read-only` and
+plain final-message stdout; mutating comment/Sentry workflows use
+`workspace-write` plus strict JSON schemas.
 
 ### 2.3 Google Antigravity CLI (`agy`)
 
@@ -108,7 +127,7 @@ These don't map 1:1. The right abstraction is *capabilities* — `[read_files, e
 | read_files | `--allowedTools Read,Glob,Grep` | `--sandbox read-only` | settings.json: `read:*` allow |
 | edit_files | `…,Edit,Write` | `--sandbox workspace-write` | `write:*` allow |
 | run_shell | `…,Bash` | `--sandbox workspace-write` | `shell:*` allow |
-| (no tools, judgment only — triage) | `--allowedTools ""` | `--sandbox read-only` + `--ask-for-approval never` | settings.json: empty allow |
+| (no tools, judgment only — triage) | `--allowedTools ""` | isolated temp directory + `--sandbox read-only` | settings.json: empty allow |
 
 ### 3.2 Structured output: prompt-instruction vs schema enforcement
 
@@ -117,41 +136,30 @@ These don't map 1:1. The right abstraction is *capabilities* — `[read_files, e
 
 The adapter parser will diverge here. Each adapter exposes a `parseDecision(rawOutput, schema)` method. Codex's implementation is just `JSON.parse(stdout)`; the others are the existing fenced/inline JSON extraction.
 
-### 3.3 The `claude -p /review` shortcut
+### 3.3 The former `claude -p /review` shortcut
 
-The Workflow B "auto-review when someone is requested as a reviewer" handler uses Claude Code's built-in `/review` slash command. Codex and Antigravity have slash commands too, but neither documents a `/review` equivalent we can rely on through headless mode without iteration.
+Workflow B formerly used Claude Code's built-in `/review` slash command. It now uses a repository-owned review prompt for both Claude and Codex.
 
-**The right move regardless of multi-CLI: write our own review prompt and use it for all harnesses including Claude.** Reasons:
-- It's one extra prompt template, an afternoon to write.
+This was the right move regardless of multi-CLI because it:
+
 - Removes a dependency on Claude Code's specific slash-command catalog evolving in a compatible direction.
-- Lets us tune the review style (today we get whatever Claude Code's `/review` does; if that ever changes, we have no recourse).
+- Lets us tune and test the review style.
 - Makes the Workflow B test surface symmetric with Workflow A and C.
 
 This change is independently valuable and clears the only Claude-Code-specific behavior we *can't* express in a portable prompt.
 
 ---
 
-## 4. Proposed architecture
+## 4. Implemented architecture
 
-### 4.1 Adapter interface (illustrative — TBD on detail)
+### 4.1 Adapter interface
 
 ```js
-// src/harnesses/types.js
-/**
- * @typedef {Object} HarnessRunOptions
- * @property {string} prompt
- * @property {string} workDir
- * @property {("read_files"|"edit_files"|"run_shell"|"search")[]} capabilities
- * @property {object} [schema]            // JSON Schema for the decision; codex enforces, others rely on prompt
- * @property {number} timeoutMs
- * @property {number} [maxTurns]          // honored by claude; ignored by others
- */
-export class Harness {
-  /** Invoke headless, return parsed decision + raw text. */
-  async runWithDecision(opts) {
-    /* returns { decision, rawText } */
-  }
-}
+const harness = await getHarness();
+await harness.runTriage(context);
+await harness.runCommentFix(workDir, context);
+await harness.runReview(workDir, context);
+await harness.runSentryFix(workDir, context);
 ```
 
 ### 4.2 File layout
@@ -162,18 +170,17 @@ src/
 │  ├─ index.js              # getHarness(name) factory; reads HARNESS env
 │  ├─ claude.js             # current spawn/parse code, refactored
 │  ├─ codex.js              # codex exec adapter (uses --output-schema)
-│  ├─ antigravity.js        # agy --print adapter
-│  └─ types.js              # interface + capability constants
-├─ services/
-│  ├─ prompts/              # rename claudePrompts.js → prompts/sentry.js, prompts/comment.js, prompts/review.js
-│  └─ … (unchanged)
-└─ handlers/                # call `harness.runWithDecision(...)` instead of runClaudeX
+│  └─ schemas.js            # strict Codex structured-output schemas
+├─ prompts/
+│  └─ index.js              # portable workflow prompts
+├─ services/                 # git, GitHub, Sentry (unchanged boundary)
+└─ handlers/                 # call the selected adapter's workflow method
 ```
 
 ### 4.3 Configuration
 
 ```
-HARNESS=claude            # claude | codex | antigravity (default: claude)
+HARNESS=claude            # claude | codex (default: claude)
 HARNESS_TIMEOUT_MS=300000 # applies to whichever harness is selected
 HARNESS_REVIEW_TIMEOUT_MS=1200000
 SENTRY_HARNESS_TIMEOUT_MS=600000
@@ -184,7 +191,7 @@ SENTRY_HARNESS_TIMEOUT_MS=600000
 
 ### 4.4 Prompt portability
 
-In `src/services/prompts/` references like *"Open the file referenced in the top frame with the Read tool"* become *"Open the file referenced in the top frame"*. Each harness already understands "read the file" as an intent. The tool *names* drop out, the *capabilities* are gated by the harness adapter.
+In `src/prompts/` references like *"Open the file referenced in the top frame with the Read tool"* became *"Open the file referenced in the top frame"*. Each harness understands "read the file" as an intent. Tool names drop out; capabilities are gated by the harness adapter.
 
 The eight-step Sentry-fix methodology, the JSON schemas, the anti-pattern lists — all stay verbatim. They're already harness-agnostic; only the tool labels are renamed.
 
@@ -197,56 +204,50 @@ The eight-step Sentry-fix methodology, the JSON schemas, the anti-pattern lists 
 | Behavior differences between models | High | Same prompt, different model → different fix quality. Each harness needs its own integration test suite (or at minimum a smoke test). The `confidence: high\|medium\|low` field already exists and naturally absorbs cross-model quality differences. |
 | Codex has no `--max-turns` | Medium | Codex relies on shell timeout + model self-termination. Less precise than Claude's hard turn cap. Document the trade-off; our existing timeout knobs still apply via shell. |
 | Antigravity headless auth on a server | Medium | OAuth + keyring requires one-time interactive setup. Document the procedure. Watch the open issue for bring-your-own-key support. |
-| Workflow B `/review` slash command | Low | Replace with our own portable review prompt (good change regardless). |
-| Codex `--json` stream is JSONL, not a single envelope | Low | Use `--output-schema` + `-o <path>` instead and parse the file. Avoids JSONL stream walking entirely. |
-| Test fixtures encode Claude output envelope | Low | Tests in `test/services/claude.test.js` need to be parameterized per adapter (or split into `test/harnesses/{claude,codex,antigravity}.test.js`). Easy mechanical change. |
+| Workflow B `/review` slash command | Resolved | Repository-owned portable review prompt is used by both adapters. |
+| Codex `--json` stream is JSONL, not a single envelope | Resolved | Use `--output-schema` and parse final-message stdout; no event-stream walking. |
+| Test fixtures encode Claude output envelope | Resolved | Adapter-specific tests live in `test/harnesses/`. |
 
 ---
 
-## 6. Scope estimate
+## 6. Implementation status against the original estimate
 
-**Phase 1 — Claude + Codex (~3 days)**
-- Extract `src/harnesses/` directory and interface (½ day)
-- Move existing Claude code into `harnesses/claude.js`, no behavior change (½ day)
-- Implement `harnesses/codex.js` using `codex exec --output-schema` + `--sandbox workspace-write` + `--ask-for-approval never` (1 day)
-- Make prompts tool-agnostic; write portable `/review` prompt (½ day)
-- Adapter selection via `HARNESS` env; per-harness tests (½ day)
+**Phase 1 — Claude + Codex: complete**
+
+- Extracted the `src/harnesses/` boundary and retained all four workflow entry points.
+- Moved existing Claude behavior into `harnesses/claude.js`.
+- Implemented `harnesses/codex.js` with strict schemas and explicit read/write sandboxes.
+- Made prompts tool-agnostic and replaced `/review` with a portable review prompt.
+- Added `HARNESS=codex`, generic timeout settings, adapter tests, and live smoke checks.
 
 **Phase 2 — Antigravity (~½ day extra)**
 - Implement `harnesses/antigravity.js` once we've confirmed the `--output-format json` envelope shape against a live install
 - Document the server-side OAuth one-time setup
 
-**Phase 3 — Docs + CI (~½ day)**
-- Update README, .env.example, architecture diagram
-- Optional CI matrix that exercises each harness against a smoke-test prompt
+**Phase 3 — Docs + CI**
 
-**Total: ~3–5 focused days end-to-end.** Not a rewrite — most of the surface area (queue, git, GitHub API, Sentry API, signature verification, route logic, prompt methodology) is untouched.
+- README, `.env.example`, and this assessment are updated.
+- A live CI matrix remains optional because it requires harness credentials and incurs model usage.
+
+As expected, this was not a rewrite: queues, API clients, signature verification, route logic, and git orchestration remain outside the harness boundary.
 
 ---
 
-## 7. Recommendation
+## 7. Follow-up recommendation
 
-**Go ahead, but in two pull requests:**
+Claude + Codex support is implemented. Remaining work is deliberately limited to:
 
-1. **First PR — portable foundation.** Extract the harness interface, move existing Claude code into `harnesses/claude.js` unchanged, replace `/review` with our own portable prompt, make tool names in prompts generic. Behavior on Claude stays identical. This is risk-free reorg that benefits readability whether or not we ever add another adapter.
-
-2. **Second PR — Codex adapter.** Add `harnesses/codex.js` with `--output-schema`. Add `HARNESS=codex` selection. Add per-harness integration smoke tests. Document the trade-offs.
-
-3. **Third PR (later) — Antigravity adapter.** Wait for either bring-your-own-key support or a clearer headless-auth story. The platform is still new; the cost/benefit is better in a few months.
-
-This sequencing means each PR is small, reviewable, and reversible. It avoids a big-bang refactor that mixes concerns (architecture + new adapter + new tests + new docs).
+1. Exercise both installed harnesses periodically with the smoke-test prompts as their CLIs evolve.
+2. Add Antigravity later, after confirming its output envelope and unattended authentication against a live install.
 
 ---
 
 ## Sources
 
-- [Non-interactive mode – Codex | OpenAI Developers](https://developers.openai.com/codex/noninteractive)
-- [Command line options – Codex CLI | OpenAI Developers](https://developers.openai.com/codex/cli/reference)
-- [Sandbox – Codex | OpenAI Developers](https://developers.openai.com/codex/concepts/sandboxing)
-- [Agent approvals & security – Codex | OpenAI Developers](https://developers.openai.com/codex/agent-approvals-security)
-- [Slash commands in Codex CLI | OpenAI Developers](https://developers.openai.com/codex/cli/slash-commands)
-- [Build Code Review with the Codex SDK | OpenAI Cookbook](https://developers.openai.com/cookbook/examples/codex/build_code_review_with_codex_sdk)
-- [Headless Execution Mode (codex exec) | DeepWiki](https://deepwiki.com/openai/codex/4.2-headless-execution-mode-(codex-exec))
+- [Codex CLI | OpenAI](https://learn.chatgpt.com/docs/codex/cli)
+- [Non-interactive mode | OpenAI](https://learn.chatgpt.com/docs/non-interactive-mode)
+- [Command line options | OpenAI](https://learn.chatgpt.com/docs/codex/cli/reference)
+- [Sandboxing | OpenAI](https://learn.chatgpt.com/docs/codex/concepts/sandboxing)
 - [Google Antigravity CLI Overview](https://antigravity.google/docs/cli-overview)
 - [Using AGY CLI | Google Antigravity Docs](https://antigravity.google/docs/cli-using)
 - [Antigravity CLI Features](https://antigravity.google/docs/cli-features)

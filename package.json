@@ -1,7 +1,7 @@
 {
   "name": "clauditor",
   "version": "1.0.0",
-  "description": "An autonomous PR auditor powered by Claude Code. Listens to GitHub webhooks, applies review feedback, and reviews PRs on request.",
+  "description": "An autonomous PR auditor powered by Claude Code or Codex CLI. Listens to GitHub webhooks, applies review feedback, and reviews PRs on request.",
   "type": "module",
   "main": "src/server.js",
   "license": "Apache-2.0",

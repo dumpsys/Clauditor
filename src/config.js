@@ -29,7 +29,7 @@ export function validateConfig() {
  * Why this exists: `parseInt("abc", 10)` returns `NaN`, and a `NaN` value
  * silently breaks every downstream comparison (`x < NaN` is always false)
  * and `setTimeout(fn, NaN)` fires near-immediately. We've now been bitten
- * by this in three places (concurrency, event-count gate, Claude timeout),
+ * by this in three places (concurrency, event-count gate, harness timeout),
  * so centralize the guard here.
  */
 export function parsePositiveIntEnv(name, fallback) {
@@ -60,6 +60,22 @@ export function parseProjectRepoMap(raw) {
   return map;
 }
 
+const legacyHarnessTimeoutMs = parsePositiveIntEnv("CLAUDE_TIMEOUT_MS", 300000);
+const harnessTimeoutMs = parsePositiveIntEnv("HARNESS_TIMEOUT_MS", legacyHarnessTimeoutMs);
+const legacyReviewTimeoutMs = parsePositiveIntEnv(
+  "CLAUDE_REVIEW_TIMEOUT_MS",
+  harnessTimeoutMs * 4,
+);
+const harnessReviewTimeoutMs = parsePositiveIntEnv(
+  "HARNESS_REVIEW_TIMEOUT_MS",
+  legacyReviewTimeoutMs,
+);
+const legacySentryHarnessTimeoutMs = parsePositiveIntEnv("SENTRY_CLAUDE_TIMEOUT_MS", 600000);
+const sentryHarnessTimeoutMs = parsePositiveIntEnv(
+  "SENTRY_HARNESS_TIMEOUT_MS",
+  legacySentryHarnessTimeoutMs,
+);
+
 export const config = {
   port: parseInt(process.env.PORT || "3000", 10),
   githubToken: process.env.GITHUB_TOKEN || process.env.GH_TOKEN,
@@ -85,15 +101,13 @@ export const config = {
     ? `${process.env.GITHUB_NOREPLY_USER_ID.trim()}+${process.env.GITHUB_BOT_USERNAME}@users.noreply.github.com`
     : process.env.GIT_EMAIL || "pr-bot@localhost",
   gitName: process.env.GIT_NAME || "PR Review Bot",
-  // Default 5 min — for the comment handler, which makes one targeted edit.
-  claudeTimeoutMs: parseInt(process.env.CLAUDE_TIMEOUT_MS || "300000", 10),
-  // Default 20 min — reviews of substantial PRs legitimately need more time.
-  // Falls back to claudeTimeoutMs * 4 if explicitly unset to keep things in scale.
-  claudeReviewTimeoutMs: parseInt(
-    process.env.CLAUDE_REVIEW_TIMEOUT_MS ||
-      String(parseInt(process.env.CLAUDE_TIMEOUT_MS || "300000", 10) * 4),
-    10
-  ),
+  // Harness-neutral timeout names take precedence. The CLAUDE_* names remain
+  // aliases so existing deployments keep their current behavior.
+  harnessTimeoutMs,
+  harnessReviewTimeoutMs,
+  claudeTimeoutMs: harnessTimeoutMs,
+  claudeReviewTimeoutMs: harnessReviewTimeoutMs,
+  codexModel: (process.env.CODEX_MODEL || "").trim(),
   logLevel: process.env.LOG_LEVEL?.toLowerCase() || "info",
   // Max request-body size accepted by express.json(). Default 5 MB —
   // Sentry issue webhooks routinely exceed Express's 100 KB default once
@@ -115,10 +129,10 @@ export const config = {
     // freezing the queue, or making `setTimeout(fn, NaN)` time out instantly.
     minEventCount: parsePositiveIntEnv("SENTRY_MIN_EVENT_COUNT", 1),
     maxConcurrentJobs: parsePositiveIntEnv("SENTRY_MAX_CONCURRENT_JOBS", 2),
-    // Sentry fixes can take longer than comment fixes — there's more
-    // exploration (find the file, understand the error, reproduce). Default
-    // 10 min, separate knob so it doesn't have to track CLAUDE_TIMEOUT_MS.
-    claudeTimeoutMs: parsePositiveIntEnv("SENTRY_CLAUDE_TIMEOUT_MS", 600000),
+    // Sentry fixes can take longer than comment fixes. Keep the legacy
+    // SENTRY_CLAUDE_TIMEOUT_MS alias for backwards compatibility.
+    harnessTimeoutMs: sentryHarnessTimeoutMs,
+    claudeTimeoutMs: sentryHarnessTimeoutMs,
   },
 };
 

@@ -23,6 +23,7 @@ describe("harness factory (src/harnesses/index.js)", () => {
     process.env.HARNESS = "claude";
     const { harness } = await loadFresh("default");
     assert.equal(harness.name, "claude");
+    assert.equal(harness.displayName, "Claude Code");
     assert.equal(typeof harness.runCommentFix, "function");
     assert.equal(typeof harness.runTriage, "function");
     assert.equal(typeof harness.runReview, "function");
@@ -35,13 +36,24 @@ describe("harness factory (src/harnesses/index.js)", () => {
     assert.equal(harness.name, "claude");
   });
 
+  test("selects the Codex harness", async () => {
+    process.env.HARNESS = "  CoDeX  ";
+    const { harness } = await loadFresh("codex");
+    assert.equal(harness.name, "codex");
+    assert.equal(harness.displayName, "Codex");
+    assert.equal(typeof harness.runCommentFix, "function");
+    assert.equal(typeof harness.runTriage, "function");
+    assert.equal(typeof harness.runReview, "function");
+    assert.equal(typeof harness.runSentryFix, "function");
+  });
+
   test("throws a helpful error on unknown HARNESS values", async () => {
     process.env.HARNESS = "gpt5-cli-doesnt-exist";
     await assert.rejects(
       () => loadFresh("unknown"),
       (err) => {
         assert.match(err.message, /Unknown HARNESS=/);
-        assert.match(err.message, /Supported: claude/);
+        assert.match(err.message, /Supported: claude, codex/);
         return true;
       },
     );

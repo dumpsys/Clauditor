@@ -25,6 +25,8 @@ import {
 // source of truth for what the agent may do.
 const SETTING_SOURCES = ["--setting-sources", "user"];
 
+export const displayName = "Claude Code";
+
 /**
  * Claude Code harness — implementation of the four harness entry points
  * (runCommentFix / runTriage / runReview / runSentryFix) on top of the
@@ -57,7 +59,7 @@ export async function runCommentFix(workDir, context) {
     "--max-turns", "25",
   ];
 
-  const output = await spawnClaude(args, prompt, workDir, config.claudeTimeoutMs);
+  const output = await spawnClaude(args, prompt, workDir, config.harnessTimeoutMs);
   return parseDecisionOutput(output);
 }
 
@@ -115,10 +117,10 @@ export async function runReview(workDir, context) {
   logger.info(
     `Running: claude -p (portable review prompt) on PR #${context.prNumber}, ` +
     `${context.baseBranch}...${context.headBranch}, ` +
-    `timeout ${Math.round(config.claudeReviewTimeoutMs / 1000)}s`
+    `timeout ${Math.round(config.harnessReviewTimeoutMs / 1000)}s`
   );
 
-  const output = await spawnClaude(args, prompt, workDir, config.claudeReviewTimeoutMs);
+  const output = await spawnClaude(args, prompt, workDir, config.harnessReviewTimeoutMs);
   return extractReviewText(output);
 }
 
@@ -142,7 +144,7 @@ export async function runSentryFix(workDir, context) {
     "--max-turns", "30",
   ];
 
-  const output = await spawnClaude(args, prompt, workDir, config.sentry.claudeTimeoutMs);
+  const output = await spawnClaude(args, prompt, workDir, config.sentry.harnessTimeoutMs);
   return parseSentryOutput(output);
 }
 
@@ -217,7 +219,7 @@ function parseTriageOutput(rawOutput) {
   return { skip: false, reason: "triage output not parseable; defaulted to proceed" };
 }
 
-function spawnClaude(args, prompt, cwd, timeoutMs = config.claudeTimeoutMs) {
+function spawnClaude(args, prompt, cwd, timeoutMs = config.harnessTimeoutMs) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     const errorChunks = [];
