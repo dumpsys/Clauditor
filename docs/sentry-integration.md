@@ -1,11 +1,11 @@
 # Sentry Crash-to-PR Workflow (Workflow C)
 
-Adds a third workflow to Clauditor: when Sentry reports a new (or regressed)
-issue, attempt an automated fix and open a draft PR.
+Workflow C handles new or regressed Sentry issues by attempting an automated
+fix and opening a pull request.
 
 Scope of the first iteration: **JavaScript / TypeScript / Node — including
 React Native projects.** The architecture is language-agnostic, but the
-Claude prompt, source-map heuristics, and verification steps are tuned for
+harness prompt, source-map heuristics, and verification steps are tuned for
 JS/TS stacks first.
 
 > 📐 See [`clauditor-sentry-flow.excalidraw`](./clauditor-sentry-flow.excalidraw)
@@ -42,7 +42,7 @@ handlers/sentryIssue.js
         │       ├── yes → clone that branch                  (push-to-existing)
         │       └── no  → clone BASE_BRANCH + create branch  (fresh fix)
         │
-        ├── claude -p  (Sentry-specific prompt, sees stack + breadcrumbs + tags)
+        ├── selected harness (Sentry-specific prompt, sees stack + breadcrumbs + tags)
         │       │
         │       ├── actionable:false → comment back on Sentry "no fix proposed: <reason>"
         │       └── actionable:true ↓
@@ -64,9 +64,10 @@ handlers/sentryIssue.js
 | `src/services/sentry.js` | Sentry REST API client + helpers |
 | `src/sentryQueue.js` | Parallel worker pool + in-flight dedup |
 | `src/handlers/sentryIssue.js` | Orchestration: clone → fix → PR → notify Sentry |
-| `src/services/claude.js` | New `runClaudeSentryFix` + `buildSentryPrompt` |
-| `src/services/github.js` | New `branchExists`, `findOpenPRByHead`, `createPullRequest` |
-| `src/services/git.js` | New `cloneAndCreateBranch` |
+| `src/harnesses/{claude,codex}.js` | Harness-specific Sentry execution |
+| `src/prompts/index.js` | Portable Sentry fix prompt |
+| `src/services/github.js` | Branch lookup, existing-PR lookup, and PR creation |
+| `src/services/git.js` | Branch clone/create, commit, and transiently authenticated push |
 
 ## Dedup & concurrency
 
@@ -82,7 +83,7 @@ handlers/sentryIssue.js
 
 ## Confidence-based PR draft state
 
-Claude returns a `confidence: "high" | "medium" | "low"` field alongside
+The selected harness returns a `confidence: "high" | "medium" | "low"` field alongside
 the usual `actionable / summary / files_modified / reason`. PRs are opened
 as **drafts** by default; only `confidence: "high"` opens a regular PR.
 Existing PRs are not flipped between draft/non-draft on subsequent commits.
@@ -107,10 +108,10 @@ The bot posts back on the Sentry issue in the three outcomes the handler
 reaches:
 
 1. ✅ Success — PR link, commit SHA, confidence level
-2. ⚠️ Investigated, no fix — Claude's reason (e.g. "root cause is in a
+2. ⚠️ Investigated, no fix — the harness's reason (e.g. "root cause is in a
    third-party library; not actionable from this repo")
 3. ⏭ Skipped at the source-map gate — when top-frame source maps aren't
-   resolved and Claude can't locate the code
+   resolved and the harness can't locate the code
 
 **Not** posted back: route-layer rejections (invalid HMAC, unmapped
 project slug, issue count below threshold, duplicate webhook coalesced
@@ -132,8 +133,27 @@ SENTRY_BASE_BRANCH            default main
 SENTRY_BRANCH_PREFIX          default sentry-fix/
 SENTRY_MIN_EVENT_COUNT        default 1
 SENTRY_MAX_CONCURRENT_JOBS    default 2
-SENTRY_CLAUDE_TIMEOUT_MS      default 600000 (10 min — heavier than comment fix)
+SENTRY_HARNESS_TIMEOUT_MS     default 600000 (10 min — heavier than comment fix)
+SENTRY_CLAUDE_TIMEOUT_MS      legacy alias when the generic setting is unset
 ```
+
+## Sentry setup
+
+1. In **Organization Settings → Custom Integrations**, create an **Internal
+   Integration**.
+2. Set its webhook URL to
+   `https://your-machine.ts.net/sentry-webhook` and subscribe to
+   `issue.created`. Sentry uses this event for both new and regressed issues.
+3. Give **Issues & Events** read and write permission (`event:read` and
+   `event:write`; the broader `event:admin` permission also satisfies both).
+4. Copy the generated Client Secret to `SENTRY_CLIENT_SECRET` and the
+   organization token to `SENTRY_AUTH_TOKEN`.
+5. Limit project access to the projects Clauditor should process and list each
+   project slug in `SENTRY_PROJECT_REPO_MAP`.
+
+The token reads issue details and the latest event, then writes status comments
+back to the issue. The client secret is separate: it verifies the
+`sentry-hook-signature` on incoming webhook bodies.
 
 ## Not in this iteration
 
@@ -142,3 +162,10 @@ SENTRY_CLAUDE_TIMEOUT_MS      default 600000 (10 min — heavier than comment fi
 - Cross-repo fixes (one Sentry issue → multiple repos)
 - Sentry "resolved" webhook → close PR loop
 - Persistent dedup beyond what GitHub branch existence gives us
+
+## References
+
+- [Create a Sentry authentication token](https://docs.sentry.io/api/guides/create-auth-token/)
+- [Sentry API permissions and scopes](https://docs.sentry.io/api/permissions/)
+- [Retrieve an issue](https://docs.sentry.io/api/events/retrieve-an-issue/)
+- [Retrieve an issue event](https://docs.sentry.io/api/events/retrieve-an-issue-event/)

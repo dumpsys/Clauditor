@@ -98,7 +98,7 @@ describe("buildPRBody", () => {
 });
 
 describe("buildCommitMessage", () => {
-  test("uses Claude's summary as the subject and references the Sentry URL in the trailer", () => {
+  test("uses the harness summary as the subject and references the Sentry URL in the trailer", () => {
     const msg = buildCommitMessage(baseSummary, baseResult, ISSUE_URL);
     const [subject, ...rest] = msg.split("\n\n");
     assert.equal(subject, "Guard against undefined user before reading user.profile.name");

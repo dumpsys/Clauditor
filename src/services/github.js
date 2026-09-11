@@ -53,7 +53,7 @@ export async function findOpenPRByHead(owner, repo, branch) {
 
 /**
  * Open a new pull request. `draft` defaults to true — the Sentry workflow
- * always opens drafts unless Claude reports high confidence.
+ * always opens drafts unless the harness reports high confidence.
  */
 export async function createPullRequest(owner, repo, { title, head, base, body, draft = true }) {
   const url = `${GITHUB_API}/repos/${owner}/${repo}/pulls`;

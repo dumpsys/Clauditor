@@ -12,6 +12,24 @@ function authHeaderArgs() {
   return ["-c", `http.extraHeader=Authorization: Basic ${basic}`];
 }
 
+function redactGitSecrets(value) {
+  let redacted = String(value);
+  const secrets = [
+    config.githubToken,
+    config.githubToken
+      ? Buffer.from(`x-access-token:${config.githubToken}`).toString("base64")
+      : "",
+  ].filter(Boolean);
+
+  for (const secret of secrets) {
+    redacted = redacted.split(secret).join("<redacted>");
+  }
+  return redacted.replace(
+    /http\.extraHeader=Authorization:\s*Basic\s+\S+/gi,
+    "http.extraHeader=Authorization: Basic <redacted>",
+  );
+}
+
 export const gitOperations = {
   /**
    * Clone a repo and checkout a specific branch into workDir.
@@ -32,17 +50,11 @@ export const gitOperations = {
     // Configure git identity for commits
     await run("git", ["config", "user.email", config.gitEmail], { cwd: workDir });
     await run("git", ["config", "user.name", config.gitName], { cwd: workDir });
-
-    // Persist the auth header in this clone's local config so subsequent
-    // pushes also authenticate without exposing the token in the URL.
-    const basic = Buffer.from(`x-access-token:${config.githubToken}`).toString("base64");
-    await run("git", ["config", "http.extraHeader", `Authorization: Basic ${basic}`], { cwd: workDir });
   },
 
   /**
-   * Full clone (no --depth, no --single-branch) so Claude can run
-   * `git diff origin/<base>...HEAD` locally during a review.
-   * Checks out the head branch.
+   * Full clone (no --depth, no --single-branch) that checks out the head
+   * branch and stores the base branch at `refs/clauditor/base` for review.
    */
   async cloneForReview(repoUrl, workDir, headBranch, baseBranch) {
     logger.info(`Cloning '${headBranch}' (with base '${baseBranch}' available)...`);
@@ -55,16 +67,19 @@ export const gitOperations = {
       workDir,
     ], { cwd: "/" });
 
-    // Make sure the base branch ref exists locally as `origin/<baseBranch>`.
-    // A standard clone (without --single-branch) already fetches all remote
-    // refs, but we run an explicit fetch in case the default behavior changed.
-    await run("git", ["fetch", "origin", baseBranch], { cwd: workDir });
+    // Resolve the untrusted branch name through argv (never a shell) and store
+    // its commit under one fixed ref. Review prompts can safely use this ref
+    // without interpolating a branch name into a command, and unlike a remote
+    // tracking ref it is guaranteed to exist after the fetch.
+    await run("git", [
+      ...authHeaderArgs(),
+      "fetch",
+      "origin",
+      `refs/heads/${baseBranch}:refs/clauditor/base`,
+    ], { cwd: workDir });
 
     await run("git", ["config", "user.email", config.gitEmail], { cwd: workDir });
     await run("git", ["config", "user.name", config.gitName], { cwd: workDir });
-
-    const basic = Buffer.from(`x-access-token:${config.githubToken}`).toString("base64");
-    await run("git", ["config", "http.extraHeader", `Authorization: Basic ${basic}`], { cwd: workDir });
   },
 
   /**
@@ -89,9 +104,6 @@ export const gitOperations = {
 
     await run("git", ["config", "user.email", config.gitEmail], { cwd: workDir });
     await run("git", ["config", "user.name", config.gitName], { cwd: workDir });
-
-    const basic = Buffer.from(`x-access-token:${config.githubToken}`).toString("base64");
-    await run("git", ["config", "http.extraHeader", `Authorization: Basic ${basic}`], { cwd: workDir });
   },
 
   /**
@@ -101,7 +113,7 @@ export const gitOperations = {
    * Most callers won't need this; commitAndPush handles the common case.
    */
   async pushNewBranch(workDir, branch) {
-    await run("git", ["push", "-u", "origin", branch], { cwd: workDir });
+    await run("git", [...authHeaderArgs(), "push", "-u", "origin", branch], { cwd: workDir });
   },
 
   /**
@@ -110,14 +122,14 @@ export const gitOperations = {
   async commitAndPush(workDir, branch, message) {
     const status = await runOutput("git", ["status", "--porcelain"], { cwd: workDir });
     if (!status.trim()) {
-      throw new Error("Claude Code made no file changes despite marking feedback as actionable");
+      throw new Error("Harness made no file changes despite marking feedback as actionable");
     }
 
     logger.info(`Files changed:\n${status}`);
 
     await run("git", ["add", "-A"], { cwd: workDir });
     await run("git", ["commit", "-m", message], { cwd: workDir });
-    await run("git", ["push", "origin", branch], { cwd: workDir });
+    await run("git", [...authHeaderArgs(), "push", "origin", branch], { cwd: workDir });
 
     const sha = (await runOutput("git", ["rev-parse", "HEAD"], { cwd: workDir })).trim();
     logger.info(`Pushed commit ${sha} to ${branch}`);
@@ -143,12 +155,16 @@ function run(cmd, args, opts = {}) {
     const proc = spawn(cmd, args, { ...opts, stdio: ["ignore", "pipe", "pipe"] });
     proc.stdout.on("data", (c) => stdoutChunks.push(c));
     proc.stderr.on("data", (c) => stderrChunks.push(c));
-    proc.on("error", (err) => reject(new Error(`${cmd} error: ${err.message}`)));
+    proc.on("error", (err) => {
+      reject(new Error(`${cmd} error: ${redactGitSecrets(err.message)}`));
+    });
     proc.on("close", (code) => {
       const stdout = Buffer.concat(stdoutChunks).toString("utf-8");
       const stderr = Buffer.concat(stderrChunks).toString("utf-8");
       if (code !== 0) {
-        return reject(new Error(`${cmd} ${args.join(" ")} failed (exit ${code}):\n${stderr}`));
+        const command = redactGitSecrets(`${cmd} ${args.join(" ")}`);
+        const detail = redactGitSecrets(stderr);
+        return reject(new Error(`${command} failed (exit ${code}):\n${detail}`));
       }
       resolve({ stdout, stderr });
     });

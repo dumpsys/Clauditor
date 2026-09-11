@@ -1,15 +1,16 @@
 import path from "path";
 import fs from "fs";
 import os from "os";
-import { runClaudeReview } from "../services/claude.js";
+import { harness } from "../harnesses/index.js";
 import { postReview } from "../services/github.js";
 import { gitOperations } from "../services/git.js";
 import { logger } from "../logger.js";
 
 /**
  * Handler for `pull_request` events with action=review_requested where the
- * configured reviewer was the one requested. Runs Claude Code's `/review`
- * slash command in headless mode and posts the output as a formal PR review.
+ * configured reviewer was the one requested. Runs the active harness's
+ * review entry point (a portable review prompt, harness-agnostic) and posts
+ * the output as a formal PR review.
  */
 export async function handleReviewRequest(job) {
   const { payload } = job;
@@ -45,11 +46,11 @@ export async function handleReviewRequest(job) {
       context.baseBranch
     );
 
-    logger.info("Running `claude -p /review` in headless mode...");
-    const reviewBody = await runClaudeReview(workDir, context);
+    logger.info(`Running ${harness.name} harness with portable review prompt...`);
+    const reviewBody = await harness.runReview(workDir, context);
 
     if (!reviewBody || !reviewBody.trim()) {
-      logger.warn("Claude review returned empty output — skipping post.");
+      logger.warn("Review run returned empty output — skipping post.");
       return;
     }
 

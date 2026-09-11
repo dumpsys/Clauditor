@@ -3,7 +3,7 @@ import fs from "fs";
 import os from "os";
 import { config } from "../config.js";
 import { logger } from "../logger.js";
-import { runClaudeSentryFix } from "../services/claude.js";
+import { harness } from "../harnesses/index.js";
 import { gitOperations } from "../services/git.js";
 import {
   branchExists,
@@ -36,7 +36,7 @@ export async function handleSentryIssue(job) {
     getLatestEvent(issueId),
   ]);
 
-  // Source-map gate. Without resolved source positions, Claude is shooting
+  // Source-map gate. Without resolved source positions, the harness is shooting
   // in the dark.
   if (!hasResolvedSourceMaps(event)) {
     // Always log a one-line diagnostic of why we rejected — at info level so
@@ -71,7 +71,7 @@ export async function handleSentryIssue(job) {
       await gitOperations.cloneAndCreateBranch(repoCloneUrl, workDir, config.sentry.baseBranch, branchName);
     }
 
-    const claudeContext = {
+    const harnessContext = {
       owner,
       repoName: repo,
       branch: branchName,
@@ -85,7 +85,7 @@ export async function handleSentryIssue(job) {
       },
     };
 
-    const result = await runClaudeSentryFix(workDir, claudeContext);
+    const result = await harness.runSentryFix(workDir, harnessContext);
 
     if (!result.actionable) {
       const reason = result.reason || "(no reason given)";

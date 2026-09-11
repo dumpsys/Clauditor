@@ -34,8 +34,33 @@ done
 
 # ── 2. Check dependencies ─────────────────────────────────
 command -v node >/dev/null || { echo "❌ node not found"; exit 1; }
-command -v claude >/dev/null || { echo "❌ claude CLI not found. Install with: npm install -g @anthropic-ai/claude-code"; exit 1; }
 command -v git >/dev/null || { echo "❌ git not found"; exit 1; }
+
+HARNESS_NAME=$(printf '%s' "${HARNESS:-claude}" | tr '[:upper:]' '[:lower:]' | xargs)
+case "$HARNESS_NAME" in
+  claude)
+    command -v claude >/dev/null || { echo "❌ claude CLI not found. Install with: npm install -g @anthropic-ai/claude-code"; exit 1; }
+    ;;
+  codex)
+    command -v codex >/dev/null || { echo "❌ codex CLI not found. See: https://learn.chatgpt.com/docs/codex/cli"; exit 1; }
+    CODEX_VERSION=$(codex --version 2>/dev/null | awk '{print $2}')
+    if [[ "$CODEX_VERSION" =~ ^([0-9]+)\.([0-9]+)\. ]]; then
+      CODEX_MAJOR=${BASH_REMATCH[1]}
+      CODEX_MINOR=${BASH_REMATCH[2]}
+      if (( CODEX_MAJOR == 0 && CODEX_MINOR < 138 )); then
+        echo "❌ Codex CLI 0.138.0 or newer is required for host-read isolation (found $CODEX_VERSION)."
+        exit 1
+      fi
+    else
+      echo "❌ Could not determine Codex CLI version; expected 'codex-cli X.Y.Z'."
+      exit 1
+    fi
+    ;;
+  *)
+    echo "❌ Unknown HARNESS='$HARNESS_NAME'. Supported: claude, codex"
+    exit 1
+    ;;
+esac
 
 # Resolve tailscale binary. Shell aliases in ~/.zshrc do NOT propagate into
 # non-interactive scripts, so we cannot rely on `command -v tailscale` finding
@@ -68,10 +93,17 @@ if [ -z "$TAILSCALE" ] || [ ! -x "$TAILSCALE" ]; then
 fi
 echo "→ Using tailscale: $TAILSCALE"
 
-# ── 3. Check Claude Code auth ─────────────────────────────
-echo "→ Checking Claude Code authentication..."
-if ! claude -p "say ok" --allowedTools "" --max-turns 1 2>/dev/null | grep -qi "ok"; then
-  echo "⚠️  Claude Code may not be authenticated. Run: claude auth login"
+# ── 3. Check harness auth ─────────────────────────────────
+if [ "$HARNESS_NAME" = "claude" ]; then
+  echo "→ Checking Claude Code authentication..."
+  if ! claude -p "say ok" --allowedTools "" --max-turns 1 2>/dev/null | grep -qi "ok"; then
+    echo "⚠️  Claude Code may not be authenticated. Run: claude auth login"
+  fi
+else
+  echo "→ Checking Codex authentication..."
+  if [ -z "${CODEX_API_KEY:-}" ] && [ -z "${CODEX_ACCESS_TOKEN:-}" ] && ! codex login status >/dev/null 2>&1; then
+    echo "⚠️  Codex may not be authenticated. Run: codex login"
+  fi
 fi
 
 # ── 4. Install npm dependencies ──────────────────────────
