@@ -250,7 +250,7 @@ source-map requirements, and all settings.
 | Pushes to PRs you don't own | Comment handler only acts on PRs **authored by `GITHUB_BOT_USERNAME`**; comments on someone else's PR are skipped before any clone or harness run |
 | Noise on PR threads | Bot stays silent when feedback is non-actionable — no "🤖 nothing to do" replies |
 | Runaway harness | Wall-clock `HARNESS_TIMEOUT_MS` / `HARNESS_REVIEW_TIMEOUT_MS`; Claude also has per-workflow `--max-turns` limits |
-| Codex automation isolation | Runs with `--ignore-user-config`, `--ignore-rules`, explicit sandboxing, ephemeral sessions, and Codex's default secret filtering for generated shell commands |
+| Codex automation isolation | Ignores user config, exec policies, and repository `AGENTS.md`; excludes shared temporary roots; uses explicit sandboxing, ephemeral sessions, and secret filtering for generated shell commands |
 | Concurrent jobs | GitHub jobs use one FIFO worker; Sentry uses a separately bounded worker pool and coalesces duplicate issue IDs |
 | Harness changes nothing | Detects empty `git status`, throws error instead of empty commit |
 | Token leakage | Auth flows through `git -c http.extraHeader=…` instead of being baked into the remote URL |

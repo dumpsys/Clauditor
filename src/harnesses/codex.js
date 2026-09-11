@@ -102,12 +102,19 @@ function buildCodexArgs({ sandbox, schemaPath, skipGitRepoCheck = false }) {
     "--ephemeral",
     "--ignore-user-config",
     "--ignore-rules",
+    // Repository content is untrusted input. Do not let AGENTS.md add a
+    // second instruction channel alongside Clauditor's workflow prompt.
+    "-c", "project_doc_max_bytes=0",
     "--color", "never",
     "--sandbox", sandbox,
     // Keep credentials used by the Clauditor process out of model-generated
     // shell commands while retaining core variables such as PATH and HOME.
     "-c", 'shell_environment_policy.inherit="core"',
     "-c", "shell_environment_policy.ignore_default_excludes=false",
+    // Keep concurrent runs isolated. Codex may write to the current workspace
+    // but not the process-wide temporary roots where sibling jobs live.
+    "-c", "sandbox_workspace_write.exclude_tmpdir_env_var=true",
+    "-c", "sandbox_workspace_write.exclude_slash_tmp=true",
   ];
   if (config.codexModel) args.push("--model", config.codexModel);
   if (skipGitRepoCheck) args.push("--skip-git-repo-check");

@@ -68,7 +68,7 @@ What was **already** harness-agnostic before implementation:
 | Structured output | `stdout` contains the final agent message; `--json` switches to JSONL events; `-o/--output-last-message` also writes the final message to a file; `--output-schema <schema.json>` constrains the final response ([docs](https://learn.chatgpt.com/docs/non-interactive-mode)) |
 | Tool gating | Sandbox-based: `--sandbox read-only`, `workspace-write`, or `danger-full-access`. CLI 0.154.0 exposes `--ask-for-approval` before the `exec` subcommand rather than after it; Clauditor does not depend on that global option or opt into `--approve-for-me`. |
 | Iteration bound | No explicit max-turns; relies on model self-termination + shell timeout |
-| Run isolation | `--ephemeral --ignore-user-config --ignore-rules`; the last flag skips execpolicy `.rules` files. Clauditor also applies a restricted shell-environment policy so child commands do not inherit token/secret/key variables. |
+| Run isolation | `--ephemeral --ignore-user-config --ignore-rules`; `project_doc_max_bytes=0` suppresses repository `AGENTS.md`, and workspace-write excludes the shared `$TMPDIR` and `/tmp` roots. Clauditor also applies a restricted shell-environment policy so child commands do not inherit token/secret/key variables. |
 | Auth | Saved `codex login` authentication, `CODEX_API_KEY`, `CODEX_ACCESS_TOKEN`, or workload identity (deployment-dependent) |
 | Error reporting | Non-zero exit + progress/diagnostics on stderr; structured events are available with `--json` |
 
@@ -80,9 +80,12 @@ codex exec \
   --ephemeral \
   --ignore-user-config \
   --ignore-rules \
+  -c project_doc_max_bytes=0 \
   --sandbox workspace-write \
   -c 'shell_environment_policy.inherit="core"' \
   -c shell_environment_policy.ignore_default_excludes=false \
+  -c sandbox_workspace_write.exclude_tmpdir_env_var=true \
+  -c sandbox_workspace_write.exclude_slash_tmp=true \
   --output-schema /tmp/decision.schema.json \
   -
 ```
@@ -253,6 +256,7 @@ Claude + Codex support is implemented. Remaining work is deliberately limited to
 - [Codex CLI | OpenAI](https://learn.chatgpt.com/docs/codex/cli)
 - [Non-interactive mode | OpenAI](https://learn.chatgpt.com/docs/non-interactive-mode)
 - [Codex commands | OpenAI](https://learn.chatgpt.com/docs/reference/commands)
+- [Codex configuration reference | OpenAI](https://learn.chatgpt.com/docs/config-file/config-reference)
 - [Sandboxing | OpenAI](https://learn.chatgpt.com/docs/sandboxing)
 - [Agent approvals and security | OpenAI](https://learn.chatgpt.com/docs/agent-approvals-security)
 - [Google Antigravity CLI Overview](https://antigravity.google/docs/cli/overview)

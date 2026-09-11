@@ -32,6 +32,9 @@ describe("Codex CLI arguments", () => {
     );
     assert.ok(args.includes('shell_environment_policy.inherit="core"'));
     assert.ok(args.includes("shell_environment_policy.ignore_default_excludes=false"));
+    assert.ok(args.includes("project_doc_max_bytes=0"));
+    assert.ok(args.includes("sandbox_workspace_write.exclude_tmpdir_env_var=true"));
+    assert.ok(args.includes("sandbox_workspace_write.exclude_slash_tmp=true"));
     assert.ok(!args.includes("--ask-for-approval"));
     assert.equal(args.at(-1), "-");
   });

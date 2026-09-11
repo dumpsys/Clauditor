@@ -12,6 +12,24 @@ function authHeaderArgs() {
   return ["-c", `http.extraHeader=Authorization: Basic ${basic}`];
 }
 
+function redactGitSecrets(value) {
+  let redacted = String(value);
+  const secrets = [
+    config.githubToken,
+    config.githubToken
+      ? Buffer.from(`x-access-token:${config.githubToken}`).toString("base64")
+      : "",
+  ].filter(Boolean);
+
+  for (const secret of secrets) {
+    redacted = redacted.split(secret).join("<redacted>");
+  }
+  return redacted.replace(
+    /http\.extraHeader=Authorization:\s*Basic\s+\S+/gi,
+    "http.extraHeader=Authorization: Basic <redacted>",
+  );
+}
+
 export const gitOperations = {
   /**
    * Clone a repo and checkout a specific branch into workDir.
@@ -137,12 +155,16 @@ function run(cmd, args, opts = {}) {
     const proc = spawn(cmd, args, { ...opts, stdio: ["ignore", "pipe", "pipe"] });
     proc.stdout.on("data", (c) => stdoutChunks.push(c));
     proc.stderr.on("data", (c) => stderrChunks.push(c));
-    proc.on("error", (err) => reject(new Error(`${cmd} error: ${err.message}`)));
+    proc.on("error", (err) => {
+      reject(new Error(`${cmd} error: ${redactGitSecrets(err.message)}`));
+    });
     proc.on("close", (code) => {
       const stdout = Buffer.concat(stdoutChunks).toString("utf-8");
       const stderr = Buffer.concat(stderrChunks).toString("utf-8");
       if (code !== 0) {
-        return reject(new Error(`${cmd} ${args.join(" ")} failed (exit ${code}):\n${stderr}`));
+        const command = redactGitSecrets(`${cmd} ${args.join(" ")}`);
+        const detail = redactGitSecrets(stderr);
+        return reject(new Error(`${command} failed (exit ${code}):\n${detail}`));
       }
       resolve({ stdout, stderr });
     });

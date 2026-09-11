@@ -51,3 +51,23 @@ test("cloneForReview creates the fixed base ref used by review prompts", async (
     await fs.rm(root, { recursive: true, force: true });
   }
 });
+
+test("authenticated git failures redact the GitHub credential", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "clauditor-git-redaction-test-"));
+  const encodedToken = Buffer.from("x-access-token:test-token").toString("base64");
+
+  try {
+    await git(root, "init");
+    await assert.rejects(
+      () => gitOperations.pushNewBranch(root, "test-branch"),
+      (err) => {
+        assert.match(err.message, /http\.extraHeader=Authorization: Basic <redacted>/);
+        assert.doesNotMatch(err.message, /test-token/);
+        assert.ok(!err.message.includes(encodedToken));
+        return true;
+      },
+    );
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
