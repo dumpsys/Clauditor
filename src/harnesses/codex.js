@@ -97,24 +97,37 @@ async function runDecision({
 }
 
 function buildCodexArgs({ sandbox, schemaPath, skipGitRepoCheck = false }) {
+  const permissionProfile = sandbox === "workspace-write"
+    ? "clauditor_workspace"
+    : "clauditor_readonly";
+  const workspaceAccess = sandbox === "workspace-write" ? "write" : "read";
+  // Supply the nested profile as one TOML value. Codex's `-c` parser does not
+  // merge separately supplied dotted overrides into the filesystem map.
+  const permissionConfig =
+    `{extends=":${sandbox === "workspace-write" ? "workspace" : "read-only"}",` +
+    `filesystem={":root"="deny",":minimal"="read",` +
+    `":workspace_roots"={"."="${workspaceAccess}"},` +
+    `":tmpdir"="deny",":slash_tmp"="deny"},network={enabled=false}}`;
   const args = [
     "exec",
     "--ephemeral",
     "--ignore-user-config",
     "--ignore-rules",
+    "--strict-config",
     // Repository content is untrusted input. Do not let AGENTS.md add a
     // second instruction channel alongside Clauditor's workflow prompt.
     "-c", "project_doc_max_bytes=0",
     "--color", "never",
-    "--sandbox", sandbox,
+    // Legacy --sandbox modes allow reads across the host. Permission profiles
+    // deny the filesystem root, then reopen only Codex's minimal runtime paths
+    // and this invocation's workspace root. This prevents untrusted PR content
+    // from copying host credentials into the checkout for a later git add.
+    "-c", `default_permissions="${permissionProfile}"`,
+    "-c", `permissions.${permissionProfile}=${permissionConfig}`,
     // Keep credentials used by the Clauditor process out of model-generated
     // shell commands while retaining core variables such as PATH and HOME.
     "-c", 'shell_environment_policy.inherit="core"',
     "-c", "shell_environment_policy.ignore_default_excludes=false",
-    // Keep concurrent runs isolated. Codex may write to the current workspace
-    // but not the process-wide temporary roots where sibling jobs live.
-    "-c", "sandbox_workspace_write.exclude_tmpdir_env_var=true",
-    "-c", "sandbox_workspace_write.exclude_slash_tmp=true",
   ];
   if (config.codexModel) args.push("--model", config.codexModel);
   if (skipGitRepoCheck) args.push("--skip-git-repo-check");

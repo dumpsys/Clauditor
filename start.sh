@@ -43,6 +43,18 @@ case "$HARNESS_NAME" in
     ;;
   codex)
     command -v codex >/dev/null || { echo "❌ codex CLI not found. See: https://learn.chatgpt.com/docs/codex/cli"; exit 1; }
+    CODEX_VERSION=$(codex --version 2>/dev/null | awk '{print $2}')
+    if [[ "$CODEX_VERSION" =~ ^([0-9]+)\.([0-9]+)\. ]]; then
+      CODEX_MAJOR=${BASH_REMATCH[1]}
+      CODEX_MINOR=${BASH_REMATCH[2]}
+      if (( CODEX_MAJOR == 0 && CODEX_MINOR < 138 )); then
+        echo "❌ Codex CLI 0.138.0 or newer is required for host-read isolation (found $CODEX_VERSION)."
+        exit 1
+      fi
+    else
+      echo "❌ Could not determine Codex CLI version; expected 'codex-cli X.Y.Z'."
+      exit 1
+    fi
     ;;
   *)
     echo "❌ Unknown HARNESS='$HARNESS_NAME'. Supported: claude, codex"

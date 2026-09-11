@@ -13,12 +13,12 @@ adapter is implemented.
 ### Implementation status
 
 - Portable foundation: complete (`src/harnesses/`, generic prompts, portable review workflow).
-- Codex adapter: complete (`HARNESS=codex`, schema-constrained decisions, explicit sandboxes, isolated configuration, regression tests).
+- Codex adapter: complete (`HARNESS=codex`, schema-constrained decisions, least-privilege permission profiles, isolated configuration, regression tests).
 - Antigravity adapter: still deferred pending a stable headless-auth story.
 - Important CLI change since the original assessment: Codex CLI 0.154.0
   exposes `--ask-for-approval` as a top-level `codex` option, not as an option
   following `codex exec`. The adapter avoids relying on that placement, uses
-  explicit sandbox modes, and does not opt into `--approve-for-me`.
+  strict permission profiles, and does not opt into `--approve-for-me`.
 
 ---
 
@@ -66,9 +66,9 @@ What was **already** harness-agnostic before implementation:
 |---|---|
 | Headless invocation | `codex exec "<prompt>"` or prompt via stdin — dedicated non-interactive subcommand |
 | Structured output | `stdout` contains the final agent message; `--json` switches to JSONL events; `-o/--output-last-message` also writes the final message to a file; `--output-schema <schema.json>` constrains the final response ([docs](https://learn.chatgpt.com/docs/non-interactive-mode)) |
-| Tool gating | Sandbox-based: `--sandbox read-only`, `workspace-write`, or `danger-full-access`. CLI 0.154.0 exposes `--ask-for-approval` before the `exec` subcommand rather than after it; Clauditor does not depend on that global option or opt into `--approve-for-me`. |
+| Tool gating | Permission profiles (available in Codex CLI 0.138.0+). Clauditor denies the host filesystem root, permits only Codex's minimal runtime paths, and grants the active checkout either read or write access. It does not opt into `--approve-for-me`. |
 | Iteration bound | No explicit max-turns; relies on model self-termination + shell timeout |
-| Run isolation | `--ephemeral --ignore-user-config --ignore-rules`; `project_doc_max_bytes=0` suppresses repository `AGENTS.md`, and workspace-write excludes the shared `$TMPDIR` and `/tmp` roots. Clauditor also applies a restricted shell-environment policy so child commands do not inherit token/secret/key variables. |
+| Run isolation | `--ephemeral --ignore-user-config --ignore-rules --strict-config`; `project_doc_max_bytes=0` suppresses repository `AGENTS.md`. The permission profile denies host and temporary-root reads, disables command network access, and exposes only minimal runtime paths plus the active checkout. Clauditor also applies a restricted shell-environment policy so child commands do not inherit token/secret/key variables. |
 | Auth | Saved `codex login` authentication, `CODEX_API_KEY`, `CODEX_ACCESS_TOKEN`, or workload identity (deployment-dependent) |
 | Error reporting | Non-zero exit + progress/diagnostics on stderr; structured events are available with `--json` |
 
@@ -80,19 +80,20 @@ codex exec \
   --ephemeral \
   --ignore-user-config \
   --ignore-rules \
+  --strict-config \
   -c project_doc_max_bytes=0 \
-  --sandbox workspace-write \
+  -c 'default_permissions="clauditor_workspace"' \
+  -c 'permissions.clauditor_workspace={extends=":workspace",filesystem={":root"="deny",":minimal"="read",":workspace_roots"={"."="write"},":tmpdir"="deny",":slash_tmp"="deny"},network={enabled=false}}' \
   -c 'shell_environment_policy.inherit="core"' \
   -c shell_environment_policy.ignore_default_excludes=false \
-  -c sandbox_workspace_write.exclude_tmpdir_env_var=true \
-  -c sandbox_workspace_write.exclude_slash_tmp=true \
   --output-schema /tmp/decision.schema.json \
   -
 ```
 
-The prompt is sent on stdin. Review-only runs use `--sandbox read-only` and
-plain final-message stdout; mutating comment/Sentry workflows use
-`workspace-write` plus strict JSON schemas.
+The prompt is sent on stdin. Review-only runs use the equivalent profile with
+read-only checkout access and plain final-message stdout; mutating
+comment/Sentry workflows use write access plus strict JSON schemas. Both
+profiles deny reads elsewhere on the host and deny shared temporary roots.
 
 ### 2.3 Google Antigravity CLI (`agy`)
 
@@ -120,20 +121,20 @@ Every harness fits the same conceptual shape:
 
 But the surfaces differ in three load-bearing ways:
 
-### 3.1 Tool gating: whitelist vs sandbox vs permission file
+### 3.1 Tool gating: whitelist vs permission profile vs permission file
 
 - Claude: **named whitelist** (`Read,Edit,Bash,Grep,Glob,Write`)
-- Codex: **sandbox** with capability levels (`workspace-write` covers read+edit+shell)
+- Codex: **permission profile** with an explicit host-read deny boundary and checkout-scoped read/write access
 - Antigravity: **permission file** with allow/deny arrays per-command
 
 These don't map 1:1. The right abstraction is *capabilities* — `[read_files, edit_files, run_shell, search]` — and each adapter translates:
 
 | Capability | Claude flag | Codex flag | Antigravity flag |
 |---|---|---|---|
-| read_files | `--allowedTools Read,Glob,Grep` | `--sandbox read-only` | settings.json: `read:*` allow |
-| edit_files | `…,Edit,Write` | `--sandbox workspace-write` | `write:*` allow |
-| run_shell | `…,Bash` | `--sandbox workspace-write` | `shell:*` allow |
-| (no tools, judgment only — triage) | `--allowedTools ""` | isolated temp directory + `--sandbox read-only` | settings.json: empty allow |
+| read_files | `--allowedTools Read,Glob,Grep` | checkout `read` rule | settings.json: `read:*` allow |
+| edit_files | `…,Edit,Write` | checkout `write` rule | `write:*` allow |
+| run_shell | `…,Bash` | minimal runtime `read` + checkout access | `shell:*` allow |
+| (no tools, judgment only — triage) | `--allowedTools ""` | isolated checkout `read` rule | settings.json: empty allow |
 
 ### 3.2 Structured output: prompt-instruction vs schema enforcement
 
@@ -225,7 +226,7 @@ The eight-step Sentry-fix methodology, the JSON schemas, the anti-pattern lists 
 
 - Extracted the `src/harnesses/` boundary and retained all four workflow entry points.
 - Moved existing Claude behavior into `harnesses/claude.js`.
-- Implemented `harnesses/codex.js` with strict schemas and explicit read/write sandboxes.
+- Implemented `harnesses/codex.js` with strict schemas and host-read-isolated permission profiles.
 - Made prompts tool-agnostic and replaced `/review` with a portable review prompt.
 - Added `HARNESS=codex`, generic timeout settings, adapter tests, and live smoke checks.
 
@@ -259,6 +260,7 @@ Claude + Codex support is implemented. Remaining work is deliberately limited to
 - [Codex configuration reference | OpenAI](https://learn.chatgpt.com/docs/config-file/config-reference)
 - [Sandboxing | OpenAI](https://learn.chatgpt.com/docs/sandboxing)
 - [Agent approvals and security | OpenAI](https://learn.chatgpt.com/docs/agent-approvals-security)
+- [Codex permission profiles | OpenAI](https://learn.chatgpt.com/docs/permissions)
 - [Google Antigravity CLI Overview](https://antigravity.google/docs/cli/overview)
 - [Using AGY CLI | Google Antigravity Docs](https://antigravity.google/docs/cli/using)
 - [Antigravity CLI Features](https://antigravity.google/docs/cli/features)

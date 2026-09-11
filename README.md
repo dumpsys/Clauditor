@@ -104,7 +104,7 @@ endpoints are HMAC-verified by the same Express server.
 | Tool | Install |
 |------|---------|
 | Node.js ≥ 18 | https://nodejs.org |
-| Coding harness | Install Claude Code (`curl -fsSL https://claude.ai/install.sh \| bash`) or [Codex CLI](https://learn.chatgpt.com/docs/codex/cli) (`curl -fsSL https://chatgpt.com/codex/install.sh \| sh` on macOS/Linux) |
+| Coding harness | Install Claude Code (`curl -fsSL https://claude.ai/install.sh \| bash`) or [Codex CLI 0.138.0+](https://learn.chatgpt.com/docs/codex/cli) (`curl -fsSL https://chatgpt.com/codex/install.sh \| sh` on macOS/Linux) |
 | Tailscale | https://tailscale.com/download |
 | Git | Pre-installed on most systems |
 
@@ -161,6 +161,9 @@ For unattended Codex deployments, `CODEX_API_KEY` or `CODEX_ACCESS_TOKEN` is
 also supported. Keep credentials scoped to the Clauditor process. The adapter
 uses Codex's default secret filtering for model-generated shell commands and
 does not persist GitHub credentials in agent-readable clone configuration.
+Clauditor requires Codex CLI 0.138.0 or newer because it uses permission
+profiles to deny host filesystem reads while exposing only minimal runtime
+paths and the active checkout.
 
 ### 4. Start the Bot
 
@@ -250,7 +253,7 @@ source-map requirements, and all settings.
 | Pushes to PRs you don't own | Comment handler only acts on PRs **authored by `GITHUB_BOT_USERNAME`**; comments on someone else's PR are skipped before any clone or harness run |
 | Noise on PR threads | Bot stays silent when feedback is non-actionable — no "🤖 nothing to do" replies |
 | Runaway harness | Wall-clock `HARNESS_TIMEOUT_MS` / `HARNESS_REVIEW_TIMEOUT_MS`; Claude also has per-workflow `--max-turns` limits |
-| Codex automation isolation | Ignores user config, exec policies, and repository `AGENTS.md`; excludes shared temporary roots; uses explicit sandboxing, ephemeral sessions, and secret filtering for generated shell commands |
+| Codex automation isolation | Requires Codex CLI 0.138.0+; ignores user config, exec policies, and repository `AGENTS.md`; a strict permission profile denies host and temporary-root reads while reopening only minimal runtime paths and the active checkout; sessions are ephemeral and generated shell commands use secret filtering |
 | Concurrent jobs | GitHub jobs use one FIFO worker; Sentry uses a separately bounded worker pool and coalesces duplicate issue IDs |
 | Harness changes nothing | Detects empty `git status`, throws error instead of empty commit |
 | Token leakage | Auth flows through `git -c http.extraHeader=…` instead of being baked into the remote URL |
