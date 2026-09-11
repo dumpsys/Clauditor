@@ -1,7 +1,7 @@
 # Multi-CLI Support — Assessment
 
 **Branch:** `research/multi-cli-support`
-**Last verified:** 2026-09-10 against OpenAI Codex CLI 0.154.0 and the current official non-interactive-mode documentation.
+**Last verified:** 2026-09-11 against OpenAI Codex CLI 0.154.0 and the current official non-interactive-mode documentation.
 **Question:** Can Clauditor support harnesses other than Claude Code — specifically OpenAI's Codex CLI (`codex exec`) and Google's Antigravity CLI (`agy`) — so operators who prefer those tools can adopt the workflow?
 
 The Codex sections were revalidated for this implementation. The Antigravity
@@ -15,7 +15,10 @@ adapter is implemented.
 - Portable foundation: complete (`src/harnesses/`, generic prompts, portable review workflow).
 - Codex adapter: complete (`HARNESS=codex`, schema-constrained decisions, explicit sandboxes, isolated configuration, regression tests).
 - Antigravity adapter: still deferred pending a stable headless-auth story.
-- Important CLI change since the original assessment: `--ask-for-approval never` is no longer present in Codex CLI 0.154.0. The adapter uses explicit sandbox modes and does not opt into `--approve-for-me`.
+- Important CLI change since the original assessment: Codex CLI 0.154.0
+  exposes `--ask-for-approval` as a top-level `codex` option, not as an option
+  following `codex exec`. The adapter avoids relying on that placement, uses
+  explicit sandbox modes, and does not opt into `--approve-for-me`.
 
 ---
 
@@ -35,7 +38,7 @@ Audit of every line that assumes Claude Code (not language-specific things like 
 | `src/services/claudePrompts.js` (Sentry prompt) | Refers to "Read tool", "Bash tool" — Claude Code's tool *names* |
 | `src/handlers/*` | Imports specific `runClaudeCode` / `runClaudeReview` / `runClaudeTriage` / `runClaudeSentryFix` |
 
-What is **already** harness-agnostic (good news):
+What was **already** harness-agnostic before implementation:
 - The four workflows (review-comment-fix, PR review-on-request, Sentry crash-to-PR, triage) — abstract behavior, not Claude-tied
 - The JSON decision *schemas* (`{actionable, summary, files_modified, ...}` and `{skip, reason}` and `{actionable, confidence, root_cause, ...}`) — every modern coding agent can be instructed to emit these
 - The git operations, GitHub API client, Sentry client, queue, signature middleware — none touch the model
@@ -63,9 +66,9 @@ What is **already** harness-agnostic (good news):
 |---|---|
 | Headless invocation | `codex exec "<prompt>"` or prompt via stdin — dedicated non-interactive subcommand |
 | Structured output | `stdout` contains the final agent message; `--json` switches to JSONL events; `-o/--output-last-message` also writes the final message to a file; `--output-schema <schema.json>` constrains the final response ([docs](https://learn.chatgpt.com/docs/non-interactive-mode)) |
-| Tool gating | Sandbox-based: `--sandbox read-only`, `workspace-write`, or `danger-full-access`. CLI 0.154.0 has no `--ask-for-approval never`; `--approve-for-me` is an opt-in that Clauditor deliberately does not use. |
+| Tool gating | Sandbox-based: `--sandbox read-only`, `workspace-write`, or `danger-full-access`. CLI 0.154.0 exposes `--ask-for-approval` before the `exec` subcommand rather than after it; Clauditor does not depend on that global option or opt into `--approve-for-me`. |
 | Iteration bound | No explicit max-turns; relies on model self-termination + shell timeout |
-| Configuration isolation | `--ephemeral --ignore-user-config --ignore-rules`; Clauditor also applies a restricted shell-environment policy so child commands do not inherit token/secret/key variables |
+| Run isolation | `--ephemeral --ignore-user-config --ignore-rules`; the last flag skips execpolicy `.rules` files. Clauditor also applies a restricted shell-environment policy so child commands do not inherit token/secret/key variables. |
 | Auth | Saved `codex login` authentication, `CODEX_API_KEY`, `CODEX_ACCESS_TOKEN`, or workload identity (deployment-dependent) |
 | Error reporting | Non-zero exit + progress/diagnostics on stderr; structured events are available with `--json` |
 
@@ -93,7 +96,7 @@ plain final-message stdout; mutating comment/Sentry workflows use
 | Aspect | Detail |
 |---|---|
 | Headless invocation | `agy -p "<prompt>"` (alias `--print`) |
-| Structured output | `--output-format json` ([docs](https://antigravity.google/docs/cli-using)) — exact envelope shape less well documented than Codex; treat as "needs reverse-engineering before commit" |
+| Structured output | `--output-format json` ([docs](https://antigravity.google/docs/cli/using)) — exact envelope shape less well documented than Codex; treat as "needs reverse-engineering before commit" |
 | Tool gating | Permissions via `settings.json` `allow`/`deny` arrays, or `--dangerously-skip-permissions` for full auto |
 | Iteration bound | `--print-timeout` (wall-clock, default 5m). No max-turns equivalent surfaced. |
 | Slash commands | Yes — TUI-leaning |
@@ -134,7 +137,10 @@ These don't map 1:1. The right abstraction is *capabilities* — `[read_files, e
 - Claude / Antigravity: prompt instructs "output ONLY this JSON object" + downstream regex extracts it. Reliable but not enforced.
 - Codex with `--output-schema`: hard-enforced; final stdout *is* JSON matching the schema. No envelope unwrap, no regex extraction.
 
-The adapter parser will diverge here. Each adapter exposes a `parseDecision(rawOutput, schema)` method. Codex's implementation is just `JSON.parse(stdout)`; the others are the existing fenced/inline JSON extraction.
+The adapter parsers diverge here. Each workflow exposes the same public method
+on both adapters. Codex parses schema-constrained final-message stdout with
+`JSON.parse`; Claude unwraps its result envelope and extracts fenced or inline
+JSON.
 
 ### 3.3 The former `claude -p /review` shortcut
 
@@ -146,7 +152,7 @@ This was the right move regardless of multi-CLI because it:
 - Lets us tune and test the review style.
 - Makes the Workflow B test surface symmetric with Workflow A and C.
 
-This change is independently valuable and clears the only Claude-Code-specific behavior we *can't* express in a portable prompt.
+This change is independently valuable and removed the only Claude-Code-specific behavior that was not portable.
 
 ---
 
@@ -220,9 +226,9 @@ The eight-step Sentry-fix methodology, the JSON schemas, the anti-pattern lists 
 - Made prompts tool-agnostic and replaced `/review` with a portable review prompt.
 - Added `HARNESS=codex`, generic timeout settings, adapter tests, and live smoke checks.
 
-**Phase 2 — Antigravity (~½ day extra)**
-- Implement `harnesses/antigravity.js` once we've confirmed the `--output-format json` envelope shape against a live install
-- Document the server-side OAuth one-time setup
+**Phase 2 — Antigravity: deferred**
+
+- Revalidate the CLI, output envelope, permission model, and unattended authentication against a live install before estimating or implementing it.
 
 **Phase 3 — Docs + CI**
 
@@ -246,10 +252,11 @@ Claude + Codex support is implemented. Remaining work is deliberately limited to
 
 - [Codex CLI | OpenAI](https://learn.chatgpt.com/docs/codex/cli)
 - [Non-interactive mode | OpenAI](https://learn.chatgpt.com/docs/non-interactive-mode)
-- [Command line options | OpenAI](https://learn.chatgpt.com/docs/codex/cli/reference)
-- [Sandboxing | OpenAI](https://learn.chatgpt.com/docs/codex/concepts/sandboxing)
-- [Google Antigravity CLI Overview](https://antigravity.google/docs/cli-overview)
-- [Using AGY CLI | Google Antigravity Docs](https://antigravity.google/docs/cli-using)
-- [Antigravity CLI Features](https://antigravity.google/docs/cli-features)
+- [Codex commands | OpenAI](https://learn.chatgpt.com/docs/reference/commands)
+- [Sandboxing | OpenAI](https://learn.chatgpt.com/docs/sandboxing)
+- [Agent approvals and security | OpenAI](https://learn.chatgpt.com/docs/agent-approvals-security)
+- [Google Antigravity CLI Overview](https://antigravity.google/docs/cli/overview)
+- [Using AGY CLI | Google Antigravity Docs](https://antigravity.google/docs/cli/using)
+- [Antigravity CLI Features](https://antigravity.google/docs/cli/features)
 - [Antigravity CLI: A Hands-On Guide to Google's Terminal Coding Agent | DEV](https://dev.to/arindam_1729/antigravity-cli-a-hands-on-guide-to-googles-terminal-coding-agent-5bc7)
 - [AGY CLI Allow to bring own API key | Google AI Developers Forum](https://discuss.ai.google.dev/t/agy-cli-allow-to-bring-own-api-key/147289)

@@ -4,7 +4,7 @@
  * Previously these lived under `src/services/claudePrompts.js` and used
  * Claude-Code-flavored tool names ("the Read tool", "the Bash tool"). They
  * now live under `src/prompts/` so they can be consumed by any harness
- * (Claude Code, Codex CLI, Antigravity CLI). Tool references are written
+ * (currently Claude Code and Codex CLI). Tool references are written
  * in plain English ("read the file", "run the test command") rather than
  * with proper-noun tool names — every modern coding agent understands the
  * intent, and the harness adapter handles capability gating separately.
@@ -167,7 +167,7 @@ Remember: do all the thinking, editing, and test-running first. The JSON block i
  * Portable PR review prompt — Workflow B.
  *
  * Replaces the earlier `claude -p /review` shortcut so the review workflow
- * works under any harness (Claude Code, Codex, Antigravity). The output
+ * works under either supported harness (Claude Code or Codex). The output
  * is plain markdown suitable for posting as a PR review body (NOT a JSON
  * decision — Workflow B always posts).
  *

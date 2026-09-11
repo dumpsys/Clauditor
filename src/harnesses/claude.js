@@ -32,8 +32,8 @@ export const displayName = "Claude Code";
  * (runCommentFix / runTriage / runReview / runSentryFix) on top of the
  * `claude` CLI in headless mode (`-p` flag).
  *
- * Sister harnesses (Codex, Antigravity) will live next to this file and
- * implement the same four method signatures. Selection happens via
+ * Codex implements the same four method signatures next to this file.
+ * Selection happens via
  * src/harnesses/index.js based on the HARNESS env var.
  */
 
@@ -101,7 +101,7 @@ export async function runTriage(context) {
  *
  * The /review slash command was Claude-Code-specific; bringing our own
  * prompt also means we can tune the review style and the same prompt is
- * portable to Codex/Antigravity once those adapters land.
+ * portable across the currently supported Claude and Codex adapters.
  */
 export async function runReview(workDir, context) {
   const prompt = buildReviewPrompt(context);

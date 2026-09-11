@@ -82,7 +82,7 @@ export const config = {
   webhookSecret: process.env.GITHUB_WEBHOOK_SECRET,
   botUsername: process.env.GITHUB_BOT_USERNAME,
   // Username (e.g. "dumpsys") that, when requested as a reviewer, triggers
-  // an automated /review run. Empty/unset disables the feature.
+  // an automated portable review run. Empty/unset disables the feature.
   reviewRequestUser: process.env.GITHUB_REVIEW_REQUEST_USER || "",
   // Phrase that opts an existing PR comment into re-verification when the
   // author edits the comment to include it. Case-insensitive match.

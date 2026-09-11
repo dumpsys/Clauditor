@@ -2,18 +2,21 @@
 
 > An autonomous PR auditor powered by either [Claude Code](https://www.anthropic.com/claude-code) or [OpenAI Codex CLI](https://learn.chatgpt.com/docs/codex/cli).
 
-A local webhook server that watches GitHub pull requests and uses the configured coding harness to:
+A local webhook server that watches GitHub pull requests and optional Sentry issue alerts. It uses the configured coding harness to:
 
 1. **Address review feedback** — when a reviewer leaves a comment, Clauditor evaluates it, applies the fix, commits, and replies.
 2. **Auto-review on request** — when a configured user is requested as a reviewer, Clauditor runs a portable review prompt and posts a formal PR review.
+3. **Turn Sentry crashes into candidate fixes** — when an enabled Sentry integration reports an eligible JS/TS/RN issue, Clauditor investigates it and opens or updates a fix PR.
 
-All HMAC-verified, queue-serialized, and confined to non-protected branches.
+All incoming webhooks are HMAC-verified. GitHub jobs are serialized, while
+Sentry jobs use a bounded-concurrency queue with per-issue deduplication. Code
+changes remain confined to non-protected branches.
 
-> 📐 **Visual diagrams** — see [`docs/`](./docs) for Excalidraw diagrams of the architecture and both workflows.
+> 📐 **Visual diagrams** — see [`docs/`](./docs) for Excalidraw diagrams of the architecture and all three workflows.
 
 ## How It Works
 
-The bot handles two distinct workflows, dispatched by GitHub event type:
+The bot handles three workflows: two dispatched by GitHub events and one by Sentry issue webhooks.
 
 ### A. Review-comment workflow
 
@@ -41,6 +44,24 @@ Guard: PR author == GITHUB_BOT_USERNAME ?
                                         │
                                         ├── actionable     → Edit files → commit + push → reply ✅
                                         └── not actionable → log + return (silent on the PR)
+```
+
+### B. Review-request workflow
+
+```
+PR review_requested for $GITHUB_REVIEW_REQUEST_USER
+        │
+        ▼
+Webhook → Queue → handlers/reviewRequest.js
+        │
+        ▼
+Full clone (head + base for diffing)
+        │
+        ▼
+selected harness + portable review prompt
+        │
+        ▼
+GitHub API: POST /pulls/{n}/reviews   (event: COMMENT)
 ```
 
 ### C. Sentry crash-to-PR workflow
@@ -72,25 +93,9 @@ handlers/sentryIssue.js
 
 See [`docs/sentry-integration.md`](./docs/sentry-integration.md) for the full design.
 
-### B. Review-request workflow
-
-```
-PR review_requested for $GITHUB_REVIEW_REQUEST_USER
-        │
-        ▼
-Webhook → Queue → handlers/reviewRequest.js
-        │
-        ▼
-Full clone (head + base for diffing)
-        │
-        ▼
-selected harness + portable review prompt
-        │
-        ▼
-GitHub API: POST /pulls/{n}/reviews   (event: COMMENT)
-```
-
-Both workflows go through the same Express server, HMAC-verified webhook, and a single in-memory job queue.
+The GitHub workflows share a serialized in-memory queue. Sentry jobs use a
+separate bounded-concurrency queue with per-issue deduplication. Both webhook
+endpoints are HMAC-verified by the same Express server.
 
 ---
 
@@ -99,7 +104,7 @@ Both workflows go through the same Express server, HMAC-verified webhook, and a 
 | Tool | Install |
 |------|---------|
 | Node.js ≥ 18 | https://nodejs.org |
-| Coding harness | Install Claude Code (`npm install -g @anthropic-ai/claude-code`) or [Codex CLI](https://learn.chatgpt.com/docs/codex/cli) |
+| Coding harness | Install Claude Code (`curl -fsSL https://claude.ai/install.sh \| bash`) or [Codex CLI](https://learn.chatgpt.com/docs/codex/cli) (`curl -fsSL https://chatgpt.com/codex/install.sh \| sh` on macOS/Linux) |
 | Tailscale | https://tailscale.com/download |
 | Git | Pre-installed on most systems |
 
@@ -152,9 +157,10 @@ claude auth login
 codex login
 ```
 
-For unattended Codex deployments, `CODEX_API_KEY` is also supported. Keep it
-scoped to the Clauditor process; the Codex adapter filters secret-bearing
-environment variables from model-generated shell commands.
+For unattended Codex deployments, `CODEX_API_KEY` or `CODEX_ACCESS_TOKEN` is
+also supported. Keep credentials scoped to the Clauditor process. The adapter
+uses Codex's default secret filtering for model-generated shell commands and
+does not persist GitHub credentials in agent-readable clone configuration.
 
 ### 4. Start the Bot
 
@@ -164,10 +170,12 @@ chmod +x start.sh
 ```
 
 The script will:
-1. Validate your `.env`
-2. Install npm dependencies
-3. Start Tailscale Funnel and print your public webhook URL
-4. Start the Express server
+
+1. Load and validate `.env`.
+2. Check Node.js, Git, Tailscale, the selected harness, and harness authentication.
+3. Install npm dependencies.
+4. Start Tailscale Funnel and print the public GitHub webhook URL.
+5. Start the Express server.
 
 ### 5. Configure GitHub Webhook
 
@@ -212,6 +220,24 @@ If you've already posted feedback on a PR and then realize you'd like Clauditor 
 - All the usual guards still apply (PR-author scope, protected branches, etc.).
 - The bot's own replies use a different commenter, so editing them won't loop back into the workflow.
 
+### 6. Configure Sentry (optional)
+
+In Sentry, create an **Internal Integration** under **Organization Settings →
+Custom Integrations** and configure:
+
+| Field | Value |
+|-------|-------|
+| Webhook URL | `https://your-machine.ts.net/sentry-webhook` |
+| Webhook subscription | `issue.created` |
+| Issue & Event permissions | Read and write (`event:read`, `event:write`; `event:admin` also satisfies both) |
+
+Copy the integration's **Client Secret** to `SENTRY_CLIENT_SECRET` and its
+generated organization token to `SENTRY_AUTH_TOKEN`. Then map each enabled
+Sentry project slug to its GitHub repository with `SENTRY_PROJECT_REPO_MAP`.
+Grant the integration access only to the projects Clauditor should process.
+See [`docs/sentry-integration.md`](./docs/sentry-integration.md) for behavior,
+source-map requirements, and all settings.
+
 ---
 
 ## Safety Features
@@ -224,8 +250,8 @@ If you've already posted feedback on a PR and then realize you'd like Clauditor 
 | Pushes to PRs you don't own | Comment handler only acts on PRs **authored by `GITHUB_BOT_USERNAME`**; comments on someone else's PR are skipped before any clone or harness run |
 | Noise on PR threads | Bot stays silent when feedback is non-actionable — no "🤖 nothing to do" replies |
 | Runaway harness | Wall-clock `HARNESS_TIMEOUT_MS` / `HARNESS_REVIEW_TIMEOUT_MS`; Claude also has per-workflow `--max-turns` limits |
-| Codex configuration injection | Runs with `--ignore-user-config`, `--ignore-rules`, explicit sandboxing, ephemeral sessions, and secret-filtered shell environment |
-| Concurrent jobs | In-memory FIFO queue serializes all jobs (single worker) |
+| Codex automation isolation | Runs with `--ignore-user-config`, `--ignore-rules`, explicit sandboxing, ephemeral sessions, and Codex's default secret filtering for generated shell commands |
+| Concurrent jobs | GitHub jobs use one FIFO worker; Sentry uses a separately bounded worker pool and coalesces duplicate issue IDs |
 | Harness changes nothing | Detects empty `git status`, throws error instead of empty commit |
 | Token leakage | Auth flows through `git -c http.extraHeader=…` instead of being baked into the remote URL |
 | Auth misconfig surfaces clearly | Non-zero harness exits include bounded stderr/stdout diagnostics |
@@ -241,6 +267,8 @@ If you've already posted feedback on a PR and then realize you'd like Clauditor 
 | `GITHUB_BOT_USERNAME` | ✅ | — | Your GitHub username (for loop prevention) |
 | `HARNESS` | | `claude` | Coding harness: `claude` or `codex` |
 | `CODEX_MODEL` | | CLI default | Optional model override for Codex runs |
+| `CODEX_API_KEY` | for unattended Codex, unless saved login is used | — | API key consumed by `codex exec`; scope it to this process |
+| `CODEX_ACCESS_TOKEN` | optional Codex auth alternative | — | Access token for trusted automation; saved `codex login` auth also works |
 | `GITHUB_REVIEW_REQUEST_USER` | | _empty_ | When this user is requested as a PR reviewer, the bot runs a portable review prompt and posts a formal review. Empty disables the feature. |
 | `CLAUDITOR_TRIGGER_PHRASE` | | `Clauditor verify this` | Editing an existing issue_comment to include this phrase re-triggers the comment workflow on that comment. Case-insensitive. Empty disables `issue_comment.edited` handling. |
 | `PORT` | | `3000` | Local server port |
@@ -256,7 +284,7 @@ If you've already posted feedback on a PR and then realize you'd like Clauditor 
 | `WEBHOOK_BODY_LIMIT` | | `5mb` | Max request body size accepted by `express.json()`. Override Express's 100 KB default so real Sentry/GitHub payloads (stack traces, large PR reviews) don't 413 before HMAC verification. Accepts `bytes`-style strings: `500kb`, `5mb`, `10mb`, etc. |
 | `LOG_UTC` | | _empty_ | When set to `true`, log timestamps are emitted in UTC (e.g. `…Z`) instead of the machine's local time with offset (e.g. `…+07:00`). |
 | `SENTRY_CLIENT_SECRET` | | _empty_ | Internal Integration client secret. Setting this enables Workflow C and makes the other `SENTRY_*` vars required. |
-| `SENTRY_AUTH_TOKEN` | when Sentry enabled | — | Sentry API token (`event:read`, `project:read`, `issue:write`) |
+| `SENTRY_AUTH_TOKEN` | when Sentry enabled | — | Sentry organization token with `event:read` and `event:write` (or `event:admin`) |
 | `SENTRY_PROJECT_REPO_MAP` | when Sentry enabled | — | `slug-a:owner/repo-a,slug-b:owner/repo-b` |
 | `SENTRY_API_BASE_URL` | | `https://sentry.io/api/0` | Self-hosted Sentry endpoint override |
 | `SENTRY_BASE_BRANCH` | | `main` | Branch new fix branches are created from |
@@ -272,7 +300,7 @@ If you've already posted feedback on a PR and then realize you'd like Clauditor 
 
 The selected harness evaluates each comment and returns a structured JSON decision. Codex decisions are constrained with `--output-schema`; Claude decisions use the existing output parser.
 
-**Actionable** → the harness modifies the code, commits, pushes, and replies:
+**Actionable** → the harness modifies the code; Clauditor commits, pushes, and replies:
 ```
 ✅ **Addressed by Codex** (commit [`a1b2c3d`](…/commit/a1b2c3d…))
 

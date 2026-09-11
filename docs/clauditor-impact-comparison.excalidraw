@@ -580,11 +580,11 @@
       "locked": false,
       "fontSize": 16,
       "fontFamily": 3,
-      "text": "checkout branch  →  reload context  →  edit  →  run tests  →  commit  →  push  →  reply",
+      "text": "checkout branch  →  reload context  →  edit  →  run tests\n→  commit  →  push  →  reply",
       "textAlign": "center",
       "verticalAlign": "middle",
       "containerId": "b_chain",
-      "originalText": "checkout branch  →  reload context  →  edit  →  run tests  →  commit  →  push  →  reply",
+      "originalText": "checkout branch  →  reload context  →  edit  →  run tests\n→  commit  →  push  →  reply",
       "lineHeight": 1.25
     },
     {
@@ -1055,11 +1055,11 @@
       "locked": false,
       "fontSize": 16,
       "fontFamily": 3,
-      "text": "claude -p (custom prompt)\nclassify · edit · run tests",
+      "text": "selected harness\ntriage · edit · run tests",
       "textAlign": "center",
       "verticalAlign": "middle",
       "containerId": "a_claude",
-      "originalText": "claude -p (custom prompt)\nclassify · edit · run tests",
+      "originalText": "selected harness\ntriage · edit · run tests",
       "lineHeight": 1.25
     },
     {

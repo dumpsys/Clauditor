@@ -6,11 +6,11 @@ or install the Excalidraw extension for VS Code.
 
 | File | What it shows |
 |---|---|
-| [`clauditor-architecture.excalidraw`](./clauditor-architecture.excalidraw) | High-level architecture: GitHub → Tailscale → Express → Queue → Handlers → Services → External |
-| [`clauditor-comment-flow.excalidraw`](./clauditor-comment-flow.excalidraw) | Workflow A — handling PR review comments, review summaries, and PR-attached issue comments. The implementation now routes triage and fixes through the selected harness; this diagram predates that naming change. |
-| [`clauditor-review-request-flow.excalidraw`](./clauditor-review-request-flow.excalidraw) | Workflow B — auto-review when the configured user is requested as a reviewer. The implementation now uses a portable review prompt instead of the Claude-specific `/review` shortcut. |
+| [`clauditor-architecture.excalidraw`](./clauditor-architecture.excalidraw) | GitHub webhook architecture: GitHub → Tailscale → Express → serialized queue → handlers → selected harness/services. Workflow C has its own detailed diagram. |
+| [`clauditor-comment-flow.excalidraw`](./clauditor-comment-flow.excalidraw) | Workflow A — handling PR review comments, review summaries, and PR-attached issue comments through harness triage and targeted fixes. |
+| [`clauditor-review-request-flow.excalidraw`](./clauditor-review-request-flow.excalidraw) | Workflow B — auto-review using the shared portable prompt when the configured user is requested as a reviewer. |
 | [`clauditor-impact-comparison.excalidraw`](./clauditor-impact-comparison.excalidraw) | Side-by-side **Before vs After** comparison for the same reviewer comment — human-in-the-loop (hours-to-days, context-switch tax) versus Clauditor-in-the-loop (minutes, no engineer interruption). Includes the JSON decision artifact and an explicit scope note. |
-| [`clauditor-sentry-flow.excalidraw`](./clauditor-sentry-flow.excalidraw) | Workflow C — Sentry crash-to-PR. The implementation now routes its fix step through the selected harness; the diagram retains the original Claude-only labels. Companion to [`sentry-integration.md`](./sentry-integration.md). |
+| [`clauditor-sentry-flow.excalidraw`](./clauditor-sentry-flow.excalidraw) | Workflow C — Sentry crash-to-PR: convergence, filtering, source-map gate, selected harness, and reported outcomes. Companion to [`sentry-integration.md`](./sentry-integration.md). |
 
 The diagrams use a consistent color palette:
 
